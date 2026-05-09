@@ -74,26 +74,39 @@ def _cmd_generate(args):
     scenes = detect_scenes(video_path, args.threshold)
     print(f"  Found {len(scenes)} scene changes")
 
-    print("[3/5] Classifying cameras...")
+    print("[3/6] Classifying cameras...")
     camera_segments = classify_cameras(video_path, scenes)
     print(f"  Classified {len(camera_segments)} camera segments")
 
+    print("[4/6] Detecting speakers (lip movement)...")
+    from .speaker_detect import detect_speaker_position, x_position_to_pan
+
+    speaker_count = 0
+    for cs in camera_segments:
+        if cs["end"] is None or (cs["end"] - cs["start"]) < 1.0:
+            continue
+        face_x = detect_speaker_position(video_path, cs["start"], cs["end"], num_frames=5)
+        if face_x is not None:
+            cs["pan_x"] = x_position_to_pan(face_x)
+            speaker_count += 1
+    print(f"  Detected speaker in {speaker_count}/{len(camera_segments)} segments")
+
     # Generate ASS if transcript provided
     if args.transcript:
-        print("[4/5] Generating karaoke subtitles...")
+        print("[5/6] Generating karaoke subtitles...")
         whisper_segs = load_whisper_json(args.transcript)
         base = os.path.splitext(input_path)[0]
         ass_output = base + "-cortes.ass"
         generate_karaoke_ass(whisper_segs, ass_output)
         print(f"  Generated: {ass_output}")
     else:
-        print("[4/5] Skipping subtitles (no --transcript)")
+        print("[5/6] Skipping subtitles (no --transcript)")
 
     # Generate output path
     base = os.path.splitext(input_path)[0]
     output_path = base + "-cortes.kdenlive"
 
-    print("[5/5] Generating vertical project...")
+    print("[6/6] Generating vertical project...")
     generate_vertical_project(
         video_path=video_path,
         closing_path=args.closing,

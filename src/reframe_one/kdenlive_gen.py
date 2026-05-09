@@ -183,7 +183,13 @@ def _build_video_playlist(
         for i, cam_seg in enumerate(seg_cameras):
             in_tc = _tc(cam_seg["start"])
             out_tc = _tc(cam_seg["end"])
-            x, y, w, h = CAMERA_POSITIONS.get(cam_seg["camera"], CAMERA_POSITIONS["unknown"])
+
+            # Use speaker-detected X if available, otherwise fall back to camera position
+            if "pan_x" in cam_seg:
+                x = cam_seg["pan_x"]
+                y, w, h = -2112, 3456, 6144
+            else:
+                x, y, w, h = CAMERA_POSITIONS.get(cam_seg["camera"], CAMERA_POSITIONS["unknown"])
 
             entry = ET.SubElement(
                 playlist, "entry", **{"in": in_tc, "out": out_tc, "producer": video_chain}
