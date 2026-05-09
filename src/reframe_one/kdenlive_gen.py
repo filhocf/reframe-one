@@ -33,7 +33,7 @@ def _prop(parent: ET.Element, name: str, text: str = ""):
 
 def _make_chain(parent, chain_id, resource, is_video=True, kdenlive_id="4",
                 out_tc="00:23:32.600", length_tc="00:23:32.633",
-                test_audio="0", test_image="1"):
+                test_audio="0", test_image="1", control_uuid=None):
     """Create a chain element for timeline use."""
     chain = ET.SubElement(parent, "chain", id=chain_id, out=out_tc)
     _prop(chain, "length", length_tc)
@@ -48,7 +48,7 @@ def _make_chain(parent, chain_id, resource, is_video=True, kdenlive_id="4",
     _prop(chain, "astream", "0")
     _prop(chain, "kdenlive:folderid", "-1")
     _prop(chain, "kdenlive:id", kdenlive_id)
-    _prop(chain, "kdenlive:control_uuid", "{" + str(uuid.uuid4()) + "}")
+    _prop(chain, "kdenlive:control_uuid", control_uuid or ("{" + str(uuid.uuid4()) + "}"))
     _prop(chain, "mute_on_pause", "0")
     _prop(chain, "kdenlive:clip_type", "0")
     _prop(chain, "set.test_audio", test_audio)
@@ -220,6 +220,10 @@ def generate_vertical_project(
         "width": "1080",
     })
 
+    # --- Fixed UUIDs for clip consistency ---
+    video_uuid = "{" + str(uuid.uuid4()) + "}"
+    closing_uuid = "{" + str(uuid.uuid4()) + "}"
+
     # --- Bin chains (chain4=video, chain7=closing) ---
     chain4 = ET.SubElement(mlt, "chain", id="chain4", out=video_out_tc)
     _prop(chain4, "length", video_length_tc)
@@ -241,6 +245,7 @@ def generate_vertical_project(
     _prop(chain4, "kdenlive:folderid", "-1")
     _prop(chain4, "kdenlive:id", "4")
     _prop(chain4, "kdenlive:clip_type", "0")
+    _prop(chain4, "kdenlive:control_uuid", video_uuid)
     _prop(chain4, "mute_on_pause", "0")
 
     chain7 = ET.SubElement(mlt, "chain", id="chain7", out=CLOSING_LENGTH_TC)
@@ -261,6 +266,7 @@ def generate_vertical_project(
     _prop(chain7, "kdenlive:folderid", "-1")
     _prop(chain7, "kdenlive:id", "5")
     _prop(chain7, "kdenlive:clip_type", "0")
+    _prop(chain7, "kdenlive:control_uuid", closing_uuid)
     _prop(chain7, "mute_on_pause", "0")
 
     # --- Black producer ---
@@ -276,7 +282,7 @@ def generate_vertical_project(
     _prop(prod0, "set.test_audio", "0")
 
     # --- Audio track chains (chain0=video audio, chain1=video audio timeline) ---
-    _make_chain(mlt, "chain0", video_basename, kdenlive_id="4",
+    _make_chain(mlt, "chain0", video_basename, kdenlive_id="4", control_uuid=video_uuid,
                 out_tc=video_out_tc, length_tc=video_length_tc,
                 test_audio="0", test_image="1")
 
@@ -317,11 +323,11 @@ def generate_vertical_project(
 
     # --- Video timeline chains ---
     # chain1 = video for audio track (playlist2)
-    _make_chain(mlt, "chain1", video_basename, kdenlive_id="4",
+    _make_chain(mlt, "chain1", video_basename, kdenlive_id="4", control_uuid=video_uuid,
                 out_tc=video_out_tc, length_tc=video_length_tc,
                 test_audio="0", test_image="1")
     # chain2 = closing for audio track
-    _make_chain(mlt, "chain2", closing_path, kdenlive_id="5",
+    _make_chain(mlt, "chain2", closing_path, kdenlive_id="5", control_uuid=closing_uuid,
                 out_tc=CLOSING_LENGTH_TC, length_tc=str(CLOSING_LENGTH_FRAMES),
                 test_audio="0", test_image="1")
 
@@ -354,11 +360,11 @@ def generate_vertical_project(
 
     # --- Video track chains ---
     # chain3 = video for video track (playlist4)
-    _make_chain(mlt, "chain3", video_basename, kdenlive_id="4",
+    _make_chain(mlt, "chain3", video_basename, kdenlive_id="4", control_uuid=video_uuid,
                 out_tc=video_out_tc, length_tc=video_length_tc,
                 test_audio="1", test_image="0")
     # chain5 = closing for video track
-    _make_chain(mlt, "chain5", closing_path, kdenlive_id="5",
+    _make_chain(mlt, "chain5", closing_path, kdenlive_id="5", control_uuid=closing_uuid,
                 out_tc=CLOSING_LENGTH_TC, length_tc=str(CLOSING_LENGTH_FRAMES),
                 test_audio="1", test_image="0")
 
