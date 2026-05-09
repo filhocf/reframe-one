@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 
 # Camera positions for qtblend rect
 CAMERA_POSITIONS = {
-    "central": (0, 0, 1080, 1920),
+    "central": (-1200, -2112, 3456, 6144),  # zoom, centered between both
     "entrevistadores": (-1400, -2112, 3456, 6144),
     "entrevistada": (-1900, -2112, 3456, 6144),
     "unknown": (-1400, -2112, 3456, 6144),

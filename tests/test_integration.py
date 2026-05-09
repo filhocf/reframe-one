@@ -105,7 +105,7 @@ def test_rect_positions_match_cameras():
     pl4 = tree.find('.//playlist[@id="playlist4"]')
     video_entries = [e for e in pl4.findall("entry") if "chain3" in (e.get("producer") or "")]
 
-    expected_x = [-1400, -1900, 0]  # entrevistadores, entrevistada, central
+    expected_x = [-1400, -1900, -1200]  # entrevistadores, entrevistada, central
 
     for i, entry in enumerate(video_entries):
         qtblend = [
