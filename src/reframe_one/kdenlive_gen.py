@@ -512,7 +512,7 @@ def generate_vertical_project(
 
     _ = ET.SubElement(mlt, "playlist", id="playlist5")
 
-    # --- tractor2: video track ---
+    # --- tractor2: video track V1 ---
     tractor2 = ET.SubElement(
         mlt, "tractor", id="tractor2", **{"in": "00:00:00.000", "out": total_out_tc}
     )
@@ -522,36 +522,49 @@ def generate_vertical_project(
     ET.SubElement(tractor2, "track", hide="audio", producer="playlist4")
     ET.SubElement(tractor2, "track", hide="audio", producer="playlist5")
 
-    # --- Main sequence tractor (tractor3) ---
+    # --- V2 empty (playlist6/7 + tractor3) ---
+    _ = ET.SubElement(mlt, "playlist", id="playlist6")
+    _ = ET.SubElement(mlt, "playlist", id="playlist7")
     tractor3 = ET.SubElement(
         mlt, "tractor", id="tractor3", **{"in": "00:00:00.000", "out": total_out_tc}
     )
-    _prop(tractor3, "kdenlive:duration", _tc(total_dur + 0.033))
-    _prop(tractor3, "kdenlive:clipname", "Sequência 1")
-    _prop(tractor3, "kdenlive:description", "")
-    _prop(tractor3, "kdenlive:uuid", seq_uuid)
-    _prop(tractor3, "kdenlive:producer_type", "17")
-    _prop(tractor3, "kdenlive:control_uuid", "{" + str(uuid.uuid4()) + "}")
-    _prop(tractor3, "kdenlive:id", "3")
-    _prop(tractor3, "kdenlive:clip_type", "0")
-    _prop(tractor3, "kdenlive:folderid", "2")
-    _prop(tractor3, "kdenlive:sequenceproperties.activeTrack", "2")
-    _prop(tractor3, "kdenlive:sequenceproperties.audioChannels", "2")
-    _prop(tractor3, "kdenlive:sequenceproperties.audioTarget", "1")
-    _prop(tractor3, "kdenlive:sequenceproperties.hasAudio", "1")
-    _prop(tractor3, "kdenlive:sequenceproperties.hasVideo", "1")
-    _prop(tractor3, "kdenlive:sequenceproperties.tracks", "3")
-    _prop(tractor3, "kdenlive:sequenceproperties.tracksCount", "3")
-    _prop(tractor3, "kdenlive:sequenceproperties.videoTarget", "2")
+    _prop(tractor3, "kdenlive:trackheight", "67")
+    _prop(tractor3, "kdenlive:timeline_active", "1")
+    _prop(tractor3, "kdenlive:collapsed", "0")
+    ET.SubElement(tractor3, "track", hide="audio", producer="playlist6")
+    ET.SubElement(tractor3, "track", hide="audio", producer="playlist7")
 
-    ET.SubElement(tractor3, "track", producer="producer0")
-    ET.SubElement(tractor3, "track", producer="tractor0")
-    ET.SubElement(tractor3, "track", producer="tractor1")
-    ET.SubElement(tractor3, "track", producer="tractor2")
+    # --- Main sequence tractor (tractor4) ---
+    tractor4 = ET.SubElement(
+        mlt, "tractor", id="tractor4", **{"in": "00:00:00.000", "out": total_out_tc}
+    )
+    _prop(tractor4, "kdenlive:duration", _tc(total_dur + 0.033))
+    _prop(tractor4, "kdenlive:clipname", "Sequência 1")
+    _prop(tractor4, "kdenlive:description", "")
+    _prop(tractor4, "kdenlive:uuid", seq_uuid)
+    _prop(tractor4, "kdenlive:producer_type", "17")
+    _prop(tractor4, "kdenlive:control_uuid", "{" + str(uuid.uuid4()) + "}")
+    _prop(tractor4, "kdenlive:id", "3")
+    _prop(tractor4, "kdenlive:clip_type", "0")
+    _prop(tractor4, "kdenlive:folderid", "2")
+    _prop(tractor4, "kdenlive:sequenceproperties.activeTrack", "2")
+    _prop(tractor4, "kdenlive:sequenceproperties.audioChannels", "2")
+    _prop(tractor4, "kdenlive:sequenceproperties.audioTarget", "1")
+    _prop(tractor4, "kdenlive:sequenceproperties.hasAudio", "1")
+    _prop(tractor4, "kdenlive:sequenceproperties.hasVideo", "1")
+    _prop(tractor4, "kdenlive:sequenceproperties.tracks", "4")
+    _prop(tractor4, "kdenlive:sequenceproperties.tracksCount", "4")
+    _prop(tractor4, "kdenlive:sequenceproperties.videoTarget", "2")
+
+    ET.SubElement(tractor4, "track", producer="producer0")
+    ET.SubElement(tractor4, "track", producer="tractor0")
+    ET.SubElement(tractor4, "track", producer="tractor1")
+    ET.SubElement(tractor4, "track", producer="tractor2")
+    ET.SubElement(tractor4, "track", producer="tractor3")
 
     # Transitions
-    for i, b_track in enumerate(["1", "2", "3"], start=0):
-        tr = ET.SubElement(tractor3, "transition", id=f"transition{i}")
+    for i, b_track in enumerate(["1", "2", "3", "4"], start=0):
+        tr = ET.SubElement(tractor4, "transition", id=f"transition{i}")
         _prop(tr, "a_track", "0")
         _prop(tr, "b_track", b_track)
         _prop(tr, "compositing", "0")
@@ -563,12 +576,12 @@ def generate_vertical_project(
         _prop(tr, "always_active", "1")
 
     # Master filters
-    f = ET.SubElement(tractor3, "filter", id=f"filter{filter_counter[0]}")
+    f = ET.SubElement(tractor4, "filter", id=f"filter{filter_counter[0]}")
     filter_counter[0] += 1
     _prop(f, "mlt_service", "volume")
     _prop(f, "internal_added", "237")
     _prop(f, "disable", "1")
-    f = ET.SubElement(tractor3, "filter", id=f"filter{filter_counter[0]}")
+    f = ET.SubElement(tractor4, "filter", id=f"filter{filter_counter[0]}")
     filter_counter[0] += 1
     _prop(f, "mlt_service", "panner")
     _prop(f, "internal_added", "237")
@@ -595,16 +608,16 @@ def generate_vertical_project(
         main_bin, "entry", **{"in": "00:00:00.000", "out": CLOSING_LENGTH_TC, "producer": "chain7"}
     )
     ET.SubElement(
-        main_bin, "entry", **{"in": "00:00:00.000", "out": total_out_tc, "producer": "tractor3"}
+        main_bin, "entry", **{"in": "00:00:00.000", "out": total_out_tc, "producer": "tractor4"}
     )
 
     # --- Project tractor ---
     tractor_proj = ET.SubElement(
-        mlt, "tractor", id="tractor4", **{"in": "00:00:00.000", "out": total_out_tc}
+        mlt, "tractor", id="tractor5", **{"in": "00:00:00.000", "out": total_out_tc}
     )
     _prop(tractor_proj, "kdenlive:projectTractor", "1")
     ET.SubElement(
-        tractor_proj, "track", **{"in": "00:00:00.000", "out": total_out_tc, "producer": "tractor3"}
+        tractor_proj, "track", **{"in": "00:00:00.000", "out": total_out_tc, "producer": "tractor4"}
     )
 
     # --- Write output ---
