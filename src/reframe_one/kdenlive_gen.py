@@ -66,17 +66,44 @@ def _get_camera_at(camera_segments: list[dict], time_s: float) -> str:
     return "unknown"
 
 
-def _make_qtblend_filter(parent, filter_id, in_tc, camera):
-    """Create a qtblend filter for an entry."""
-    x, y, w, h = CAMERA_POSITIONS.get(camera, CAMERA_POSITIONS["unknown"])
+def _make_qtblend_filter(parent, filter_id, seg_start, seg_end, camera_segments):
+    """Create a qtblend filter with multiple keyframes based on camera changes within segment."""
+    # Find all camera changes within this segment's time range
+    keyframes = []
+    for cs in camera_segments:
+        # Camera segment overlaps with our entry
+        if cs["end"] is not None and cs["start"] < seg_end and cs["end"] > seg_start:
+            # Keyframe time is relative to the entry's in-point in Kdenlive
+            kf_time = max(cs["start"], seg_start)
+            x, y, w, h = CAMERA_POSITIONS.get(cs["camera"], CAMERA_POSITIONS["unknown"])
+            keyframes.append((kf_time, x, y, w, h))
+        elif cs["end"] is None and cs["start"] >= seg_start and cs["start"] < seg_end:
+            kf_time = cs["start"]
+            x, y, w, h = CAMERA_POSITIONS.get(cs["camera"], CAMERA_POSITIONS["unknown"])
+            keyframes.append((kf_time, x, y, w, h))
+
+    # If no keyframes found, use fallback
+    if not keyframes:
+        x, y, w, h = CAMERA_POSITIONS["unknown"]
+        keyframes = [(seg_start, x, y, w, h)]
+
     filt = ET.SubElement(parent, "filter", id=filter_id)
     _prop(filt, "rotate_center", "1")
     _prop(filt, "mlt_service", "qtblend")
     _prop(filt, "kdenlive_id", "qtblend")
     _prop(filt, "compositing", "0")
     _prop(filt, "distort", "0")
-    _prop(filt, "rect", f"{in_tc}={x} {y} {w} {h} 1.000000")
-    _prop(filt, "rotation", f"{in_tc}=0")
+
+    # Generate rect with all keyframes (each on its own property line, or semicolon-separated)
+    # Kdenlive uses ONE rect property with multiple keyframes separated by semicolons
+    # Format: "TC1=X Y W H opacity;TC2=X Y W H opacity"
+    rect_parts = []
+    for kf_time, x, y, w, h in keyframes:
+        tc = _tc(kf_time)
+        rect_parts.append(f"{tc}={x} {y} {w} {h} 1.000000")
+
+    _prop(filt, "rect", ";".join(rect_parts))
+    _prop(filt, "rotation", f"{_tc(seg_start)}=0")
     _prop(filt, "kdenlive:collapsed", "0")
     return filt
 
@@ -106,10 +133,6 @@ def _build_video_playlist(playlist, segments, camera_segments,
         in_tc = _tc(seg["start"])
         out_tc = _tc(seg["end"])
 
-        # Determine camera for this segment
-        mid_time = (seg["start"] + seg["end"]) / 2
-        camera = _get_camera_at(camera_segments, mid_time)
-
         entry = ET.SubElement(playlist, "entry", **{
             "in": in_tc, "out": out_tc, "producer": video_chain
         })
@@ -126,10 +149,10 @@ def _build_video_playlist(playlist, segments, camera_segments,
             _prop(f, "kdenlive_id", "fade_from_black")
             _prop(f, "alpha", "00:00:00.000=0;00:00:00.501=1")
 
-        # qtblend filter with camera position
+        # qtblend filter with camera positions (multiple keyframes per segment)
         fid = f"filter{filter_counter[0]}"
         filter_counter[0] += 1
-        _make_qtblend_filter(entry, fid, in_tc, camera)
+        _make_qtblend_filter(entry, fid, seg["start"], seg["end"], camera_segments)
 
         # Add fade_to_black before closing
         f = ET.SubElement(entry, "filter", id=f"filter{filter_counter[0]}",
