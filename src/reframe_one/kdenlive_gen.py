@@ -108,22 +108,35 @@ def _make_qtblend_filter(parent, filter_id, seg_start, seg_end, camera_segments)
     return filt
 
 
-def _build_audio_playlist(playlist, segments, video_chain, closing_chain):
-    """Build audio playlist entries: video segments interleaved with closing."""
-    for i, seg in enumerate(segments):
-        entry = ET.SubElement(playlist, "entry", **{
-            "in": _tc(seg["start"]), "out": _tc(seg["end"]),
-            "producer": video_chain
-        })
-        _prop(entry, "kdenlive:id", "4")
-        # Add fadeout on last entry before closing
-        if i < len(segments) - 1 or True:
-            # Add closing after each segment
-            c_entry = ET.SubElement(playlist, "entry", **{
-                "in": "00:00:00.000", "out": CLOSING_LENGTH_TC,
-                "producer": closing_chain
+def _build_audio_playlist(playlist, segments, camera_segments, video_chain, closing_chain):
+    """Build audio playlist mirroring video entries (same cuts as V1)."""
+    for seg in segments:
+        # Same camera segments as video
+        seg_cameras = []
+        for cs in camera_segments:
+            cs_end = cs["end"] if cs["end"] is not None else seg["end"]
+            if cs["start"] < seg["end"] and cs_end > seg["start"]:
+                entry_start = max(cs["start"], seg["start"])
+                entry_end = min(cs_end, seg["end"])
+                if entry_end > entry_start + 0.1:
+                    seg_cameras.append({"start": entry_start, "end": entry_end})
+
+        if not seg_cameras:
+            seg_cameras = [{"start": seg["start"], "end": seg["end"]}]
+
+        for cam_seg in seg_cameras:
+            entry = ET.SubElement(playlist, "entry", **{
+                "in": _tc(cam_seg["start"]), "out": _tc(cam_seg["end"]),
+                "producer": video_chain
             })
-            _prop(c_entry, "kdenlive:id", "5")
+            _prop(entry, "kdenlive:id", "4")
+
+        # Closing after each episode segment
+        c_entry = ET.SubElement(playlist, "entry", **{
+            "in": "00:00:00.000", "out": CLOSING_LENGTH_TC,
+            "producer": closing_chain
+        })
+        _prop(c_entry, "kdenlive:id", "5")
 
 
 def _build_video_playlist(playlist, segments, camera_segments,
@@ -333,21 +346,14 @@ def generate_vertical_project(
     _prop(prod0, "mlt_image_format", "rgba")
     _prop(prod0, "set.test_audio", "0")
 
-    # --- Audio track chains (chain0=video audio, chain1=video audio timeline) ---
+    # --- Audio track chains (chain0=video audio for A2, chain1=video audio for A1) ---
     _make_chain(mlt, "chain0", video_basename, kdenlive_id="4", control_uuid=video_uuid,
                 out_tc=video_out_tc, length_tc=video_length_tc,
                 test_audio="0", test_image="1")
 
-    # --- Audio playlists (playlist0 with entries, playlist1 blank) ---
+    # --- Audio playlists: A2 (playlist0) = EMPTY, playlist1 = blank ---
     pl0 = ET.SubElement(mlt, "playlist", id="playlist0")
     _prop(pl0, "kdenlive:audio_track", "1")
-    # Audio entries mirror the segments
-    for seg in segments:
-        entry = ET.SubElement(pl0, "entry", **{
-            "in": _tc(seg["start"]), "out": _tc(seg["end"]),
-            "producer": "chain0"
-        })
-        _prop(entry, "kdenlive:id", "4")
 
     pl1 = ET.SubElement(mlt, "playlist", id="playlist1")
     _prop(pl1, "kdenlive:audio_track", "1")
@@ -386,7 +392,7 @@ def generate_vertical_project(
     # --- playlist2: audio track for video timeline ---
     pl2 = ET.SubElement(mlt, "playlist", id="playlist2")
     _prop(pl2, "kdenlive:audio_track", "1")
-    _build_audio_playlist(pl2, segments, "chain1", "chain2")
+    _build_audio_playlist(pl2, segments, camera_segments, "chain1", "chain2")
 
     pl3 = ET.SubElement(mlt, "playlist", id="playlist3")
     _prop(pl3, "kdenlive:audio_track", "1")
