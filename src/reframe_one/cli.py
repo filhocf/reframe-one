@@ -82,14 +82,16 @@ def _cmd_generate(args):
     from .speaker_detect import detect_speaker_position, x_position_to_pan
 
     speaker_count = 0
-    for cs in camera_segments:
+    total = len(camera_segments)
+    for idx, cs in enumerate(camera_segments):
+        print(f"\r  [{idx+1}/{total}] Analyzing...", end="", flush=True)
         if cs["end"] is None or (cs["end"] - cs["start"]) < 1.0:
             continue
         face_x = detect_speaker_position(video_path, cs["start"], cs["end"], num_frames=5)
         if face_x is not None:
             cs["pan_x"] = x_position_to_pan(face_x)
             speaker_count += 1
-    print(f"  Detected speaker in {speaker_count}/{len(camera_segments)} segments")
+    print(f"\r  Detected speaker in {speaker_count}/{total} segments     ")
 
     # Generate ASS if transcript provided
     if args.transcript:
