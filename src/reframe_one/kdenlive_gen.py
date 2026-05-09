@@ -128,35 +128,66 @@ def _build_audio_playlist(playlist, segments, video_chain, closing_chain):
 
 def _build_video_playlist(playlist, segments, camera_segments,
                           video_chain, closing_chain, filter_counter):
-    """Build video playlist with qtblend filters based on camera detection."""
-    for i, seg in enumerate(segments):
-        in_tc = _tc(seg["start"])
-        out_tc = _tc(seg["end"])
+    """Build video playlist with one entry per camera segment (hard cuts)."""
+    for seg_idx, seg in enumerate(segments):
+        # Find all camera segments that overlap with this episode segment
+        seg_cameras = []
+        for cs in camera_segments:
+            cs_end = cs["end"] if cs["end"] is not None else seg["end"]
+            if cs["start"] < seg["end"] and cs_end > seg["start"]:
+                # Clip to segment boundaries
+                entry_start = max(cs["start"], seg["start"])
+                entry_end = min(cs_end, seg["end"])
+                if entry_end > entry_start + 0.1:  # skip tiny segments
+                    seg_cameras.append({
+                        "start": entry_start,
+                        "end": entry_end,
+                        "camera": cs["camera"],
+                    })
 
-        entry = ET.SubElement(playlist, "entry", **{
-            "in": in_tc, "out": out_tc, "producer": video_chain
-        })
-        _prop(entry, "kdenlive:id", "4")
+        # If no camera segments found, use entire segment with fallback
+        if not seg_cameras:
+            seg_cameras = [{"start": seg["start"], "end": seg["end"], "camera": "unknown"}]
 
-        # Add fade_from_black on first entry
-        if i == 0:
-            f = ET.SubElement(entry, "filter", id=f"filter{filter_counter[0]}",
-                              **{"in": in_tc, "out": _tc(seg["start"] + 0.5)})
+        # Generate one entry per camera segment (hard cut between positions)
+        for i, cam_seg in enumerate(seg_cameras):
+            in_tc = _tc(cam_seg["start"])
+            out_tc = _tc(cam_seg["end"])
+            x, y, w, h = CAMERA_POSITIONS.get(cam_seg["camera"], CAMERA_POSITIONS["unknown"])
+
+            entry = ET.SubElement(playlist, "entry", **{
+                "in": in_tc, "out": out_tc, "producer": video_chain
+            })
+            _prop(entry, "kdenlive:id", "4")
+
+            # Fade from black on first entry of first segment
+            if seg_idx == 0 and i == 0:
+                f = ET.SubElement(entry, "filter", id=f"filter{filter_counter[0]}",
+                                  **{"in": in_tc, "out": _tc(cam_seg["start"] + 0.5)})
+                filter_counter[0] += 1
+                _prop(f, "start", "1")
+                _prop(f, "level", "1")
+                _prop(f, "mlt_service", "brightness")
+                _prop(f, "kdenlive_id", "fade_from_black")
+                _prop(f, "alpha", "00:00:00.000=0;00:00:00.501=1")
+
+            # qtblend filter with single fixed position (hard cut, no interpolation)
+            fid = f"filter{filter_counter[0]}"
             filter_counter[0] += 1
-            _prop(f, "start", "1")
-            _prop(f, "level", "1")
-            _prop(f, "mlt_service", "brightness")
-            _prop(f, "kdenlive_id", "fade_from_black")
-            _prop(f, "alpha", "00:00:00.000=0;00:00:00.501=1")
+            filt = ET.SubElement(entry, "filter", id=fid)
+            _prop(filt, "rotate_center", "1")
+            _prop(filt, "mlt_service", "qtblend")
+            _prop(filt, "kdenlive_id", "qtblend")
+            _prop(filt, "compositing", "0")
+            _prop(filt, "distort", "0")
+            _prop(filt, "rect", f"{in_tc}={x} {y} {w} {h} 1.000000")
+            _prop(filt, "rotation", f"{in_tc}=0")
+            _prop(filt, "kdenlive:collapsed", "0")
 
-        # qtblend filter with camera positions (multiple keyframes per segment)
-        fid = f"filter{filter_counter[0]}"
-        filter_counter[0] += 1
-        _make_qtblend_filter(entry, fid, seg["start"], seg["end"], camera_segments)
-
-        # Add fade_to_black before closing
-        f = ET.SubElement(entry, "filter", id=f"filter{filter_counter[0]}",
-                          **{"in": _tc(seg["end"] - 0.167), "out": out_tc})
+        # Fade to black on last camera segment of this episode segment
+        last_entry = playlist[-1]
+        f = ET.SubElement(last_entry, "filter", id=f"filter{filter_counter[0]}",
+                          **{"in": _tc(seg["end"] - 0.167), "out": _tc(seg["end"])})
         filter_counter[0] += 1
         _prop(f, "start", "1")
         _prop(f, "level", "1")
@@ -164,13 +195,12 @@ def _build_video_playlist(playlist, segments, camera_segments,
         _prop(f, "kdenlive_id", "fade_to_black")
         _prop(f, "alpha", "00:00:00.000=1;00:00:00.167=0")
 
-        # Closing entry after each segment
+        # Closing entry after each episode segment
         c_entry = ET.SubElement(playlist, "entry", **{
             "in": "00:00:00.000", "out": CLOSING_LENGTH_TC,
             "producer": closing_chain
         })
         _prop(c_entry, "kdenlive:id", "5")
-        # Fade from black on closing
         f = ET.SubElement(c_entry, "filter", id=f"filter{filter_counter[0]}",
                           out="00:00:00.167")
         filter_counter[0] += 1
@@ -179,7 +209,6 @@ def _build_video_playlist(playlist, segments, camera_segments,
         _prop(f, "mlt_service", "brightness")
         _prop(f, "kdenlive_id", "fade_from_black")
         _prop(f, "alpha", "00:00:00.000=0;00:00:00.167=1")
-        # Fade to black on closing
         f = ET.SubElement(c_entry, "filter", id=f"filter{filter_counter[0]}",
                           **{"in": "00:00:03.633", "out": CLOSING_LENGTH_TC})
         filter_counter[0] += 1
