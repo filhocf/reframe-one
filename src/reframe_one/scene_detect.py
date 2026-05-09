@@ -1,8 +1,24 @@
 """Scene detection: identify camera switches in podcast video."""
 
 import json
+import os
 import subprocess
+import tempfile
 from dataclasses import dataclass
+
+import cv2
+import numpy as np
+
+_PROTOTXT = "/home/claudio/git/podcli/backend/models/deploy.prototxt"
+_CAFFEMODEL = "/home/claudio/git/podcli/backend/models/res10_300x300_ssd_iter_140000.caffemodel"
+_FACE_NET = None
+
+
+def _get_face_net():
+    global _FACE_NET
+    if _FACE_NET is None:
+        _FACE_NET = cv2.dnn.readNetFromCaffe(_PROTOTXT, _CAFFEMODEL)
+    return _FACE_NET
 
 
 @dataclass
@@ -41,17 +57,48 @@ def classify_cameras(video_path: str, scenes: list[SceneChange]) -> list[dict]:
     - 3+ faces → central (all participants)
     - 2 faces → entrevistadores (interviewers)
     - 1 face → entrevistada (guest)
+    - 0 faces → central (fallback)
     """
-    # TODO: implement face counting per segment
-    # For now, return segments with timestamps only
+    net = _get_face_net()
     segments = []
+
     for i, scene in enumerate(scenes):
+        start = scene.timestamp
         end = scenes[i + 1].timestamp if i + 1 < len(scenes) else None
-        segments.append({
-            "start": scene.timestamp,
-            "end": end,
-            "camera": "unknown",
-        })
+        mid = start + ((end - start) / 2) if end else start + 1.0
+
+        # Extract frame with ffmpeg
+        tmp_path = f"/tmp/_reframe_frame_{os.getpid()}_{i}.jpg"
+        subprocess.run(
+            ["ffmpeg", "-y", "-ss", str(mid), "-i", video_path,
+             "-frames:v", "1", "-q:v", "2", tmp_path],
+            capture_output=True,
+        )
+
+        face_count = 0
+        if os.path.exists(tmp_path):
+            img = cv2.imread(tmp_path)
+            os.remove(tmp_path)
+            if img is not None:
+                h, w = img.shape[:2]
+                blob = cv2.dnn.blobFromImage(img, 1.0, (300, 300), (104.0, 177.0, 123.0))
+                net.setInput(blob)
+                detections = net.forward()
+                for j in range(detections.shape[2]):
+                    if detections[0, 0, j, 2] > 0.5:
+                        face_count += 1
+
+        if face_count >= 3:
+            camera = "central"
+        elif face_count == 2:
+            camera = "entrevistadores"
+        elif face_count == 1:
+            camera = "entrevistada"
+        else:
+            camera = "central"
+
+        segments.append({"start": start, "end": end, "camera": camera, "face_count": face_count})
+
     return segments
 
 
