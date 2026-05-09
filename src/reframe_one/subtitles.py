@@ -1,6 +1,7 @@
 """Generate karaoke-style ASS subtitles with word highlighting."""
 
 import json
+
 import pysubs2
 
 
@@ -52,9 +53,7 @@ def generate_karaoke_ass(
             # Fallback: single line without karaoke
             start_ms = int(seg["start"] * 1000)
             end_ms = int(seg["end"] * 1000)
-            event = pysubs2.SSAEvent(
-                start=start_ms, end=end_ms, text=seg["text"].strip()
-            )
+            event = pysubs2.SSAEvent(start=start_ms, end=end_ms, text=seg["text"].strip())
             subs.events.append(event)
             continue
 
@@ -68,9 +67,7 @@ def generate_karaoke_ass(
             duration_cs = max(1, duration_cs)  # minimum 1 centisecond
             karaoke_text += f"{{\\k{duration_cs}}}{word['word']}"
 
-        event = pysubs2.SSAEvent(
-            start=start_ms, end=end_ms, text=karaoke_text.strip()
-        )
+        event = pysubs2.SSAEvent(start=start_ms, end=end_ms, text=karaoke_text.strip())
         subs.events.append(event)
 
     subs.save(output_path)

@@ -4,11 +4,10 @@ import argparse
 import os
 import sys
 
-from .parse_kdenlive import parse_project
-from .scene_detect import detect_scenes, classify_cameras, save_scenes
-from .subtitles import generate_karaoke_ass, load_whisper_json
 from .kdenlive_gen import generate_vertical_project
-
+from .parse_kdenlive import parse_project
+from .scene_detect import classify_cameras, detect_scenes, save_scenes
+from .subtitles import generate_karaoke_ass, load_whisper_json
 
 CLOSING_PATH = "/home/claudio/Insync/ssd/papo-saude/00 Comum/fechamento papo podcast Insta.mp4"
 
@@ -75,26 +74,26 @@ def _cmd_generate(args):
     scenes = detect_scenes(video_path, args.threshold)
     print(f"  Found {len(scenes)} scene changes")
 
-    print(f"[3/5] Classifying cameras...")
+    print("[3/5] Classifying cameras...")
     camera_segments = classify_cameras(video_path, scenes)
     print(f"  Classified {len(camera_segments)} camera segments")
 
     # Generate ASS if transcript provided
     if args.transcript:
-        print(f"[4/5] Generating karaoke subtitles...")
+        print("[4/5] Generating karaoke subtitles...")
         whisper_segs = load_whisper_json(args.transcript)
         base = os.path.splitext(input_path)[0]
         ass_output = base + "-cortes.ass"
         generate_karaoke_ass(whisper_segs, ass_output)
         print(f"  Generated: {ass_output}")
     else:
-        print(f"[4/5] Skipping subtitles (no --transcript)")
+        print("[4/5] Skipping subtitles (no --transcript)")
 
     # Generate output path
     base = os.path.splitext(input_path)[0]
     output_path = base + "-cortes.kdenlive"
 
-    print(f"[5/5] Generating vertical project...")
+    print("[5/5] Generating vertical project...")
     generate_vertical_project(
         video_path=video_path,
         closing_path=args.closing,

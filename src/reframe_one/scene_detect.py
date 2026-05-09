@@ -3,11 +3,9 @@
 import json
 import os
 import subprocess
-import tempfile
 from dataclasses import dataclass
 
 import cv2
-import numpy as np
 
 _PROTOTXT = "/home/claudio/git/podcli/backend/models/deploy.prototxt"
 _CAFFEMODEL = "/home/claudio/git/podcli/backend/models/res10_300x300_ssd_iter_140000.caffemodel"
@@ -30,9 +28,14 @@ class SceneChange:
 def detect_scenes(video_path: str, threshold: float = 0.3) -> list[SceneChange]:
     """Detect scene changes using ffmpeg."""
     cmd = [
-        "ffmpeg", "-i", video_path,
-        "-filter:v", f"select='gt(scene,{threshold})',showinfo",
-        "-f", "null", "-"
+        "ffmpeg",
+        "-i",
+        video_path,
+        "-filter:v",
+        f"select='gt(scene,{threshold})',showinfo",
+        "-f",
+        "null",
+        "-",
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
 
@@ -70,8 +73,19 @@ def classify_cameras(video_path: str, scenes: list[SceneChange]) -> list[dict]:
         # Extract frame with ffmpeg
         tmp_path = f"/tmp/_reframe_frame_{os.getpid()}_{i}.jpg"
         subprocess.run(
-            ["ffmpeg", "-y", "-ss", str(mid), "-i", video_path,
-             "-frames:v", "1", "-q:v", "2", tmp_path],
+            [
+                "ffmpeg",
+                "-y",
+                "-ss",
+                str(mid),
+                "-i",
+                video_path,
+                "-frames:v",
+                "1",
+                "-q:v",
+                "2",
+                tmp_path,
+            ],
             capture_output=True,
         )
 

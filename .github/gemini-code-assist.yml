@@ -1,0 +1,6 @@
+# Gemini Code Assist configuration
+review:
+  enabled: true
+  severity: medium
+  languages:
+    - python

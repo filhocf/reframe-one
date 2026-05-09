@@ -4,7 +4,6 @@ import os
 import uuid
 import xml.etree.ElementTree as ET
 
-
 # Camera positions for qtblend rect
 CAMERA_POSITIONS = {
     "central": (0, 0, 1080, 1920),
@@ -31,9 +30,18 @@ def _prop(parent: ET.Element, name: str, text: str = ""):
     return p
 
 
-def _make_chain(parent, chain_id, resource, is_video=True, kdenlive_id="4",
-                out_tc="00:23:32.600", length_tc="00:23:32.633",
-                test_audio="0", test_image="1", control_uuid=None):
+def _make_chain(
+    parent,
+    chain_id,
+    resource,
+    is_video=True,
+    kdenlive_id="4",
+    out_tc="00:23:32.600",
+    length_tc="00:23:32.633",
+    test_audio="0",
+    test_image="1",
+    control_uuid=None,
+):
     """Create a chain element for timeline use."""
     chain = ET.SubElement(parent, "chain", id=chain_id, out=out_tc)
     _prop(chain, "length", length_tc)
@@ -125,22 +133,29 @@ def _build_audio_playlist(playlist, segments, camera_segments, video_chain, clos
             seg_cameras = [{"start": seg["start"], "end": seg["end"]}]
 
         for cam_seg in seg_cameras:
-            entry = ET.SubElement(playlist, "entry", **{
-                "in": _tc(cam_seg["start"]), "out": _tc(cam_seg["end"]),
-                "producer": video_chain
-            })
+            entry = ET.SubElement(
+                playlist,
+                "entry",
+                **{
+                    "in": _tc(cam_seg["start"]),
+                    "out": _tc(cam_seg["end"]),
+                    "producer": video_chain,
+                },
+            )
             _prop(entry, "kdenlive:id", "4")
 
         # Closing after each episode segment
-        c_entry = ET.SubElement(playlist, "entry", **{
-            "in": "00:00:00.000", "out": CLOSING_LENGTH_TC,
-            "producer": closing_chain
-        })
+        c_entry = ET.SubElement(
+            playlist,
+            "entry",
+            **{"in": "00:00:00.000", "out": CLOSING_LENGTH_TC, "producer": closing_chain},
+        )
         _prop(c_entry, "kdenlive:id", "5")
 
 
-def _build_video_playlist(playlist, segments, camera_segments,
-                          video_chain, closing_chain, filter_counter):
+def _build_video_playlist(
+    playlist, segments, camera_segments, video_chain, closing_chain, filter_counter
+):
     """Build video playlist with one entry per camera segment (hard cuts)."""
     for seg_idx, seg in enumerate(segments):
         # Find all camera segments that overlap with this episode segment
@@ -152,11 +167,13 @@ def _build_video_playlist(playlist, segments, camera_segments,
                 entry_start = max(cs["start"], seg["start"])
                 entry_end = min(cs_end, seg["end"])
                 if entry_end > entry_start + 0.1:  # skip tiny segments
-                    seg_cameras.append({
-                        "start": entry_start,
-                        "end": entry_end,
-                        "camera": cs["camera"],
-                    })
+                    seg_cameras.append(
+                        {
+                            "start": entry_start,
+                            "end": entry_end,
+                            "camera": cs["camera"],
+                        }
+                    )
 
         # If no camera segments found, use entire segment with fallback
         if not seg_cameras:
@@ -168,15 +185,19 @@ def _build_video_playlist(playlist, segments, camera_segments,
             out_tc = _tc(cam_seg["end"])
             x, y, w, h = CAMERA_POSITIONS.get(cam_seg["camera"], CAMERA_POSITIONS["unknown"])
 
-            entry = ET.SubElement(playlist, "entry", **{
-                "in": in_tc, "out": out_tc, "producer": video_chain
-            })
+            entry = ET.SubElement(
+                playlist, "entry", **{"in": in_tc, "out": out_tc, "producer": video_chain}
+            )
             _prop(entry, "kdenlive:id", "4")
 
             # Fade from black on first entry of first segment
             if seg_idx == 0 and i == 0:
-                f = ET.SubElement(entry, "filter", id=f"filter{filter_counter[0]}",
-                                  **{"in": in_tc, "out": _tc(cam_seg["start"] + 0.5)})
+                f = ET.SubElement(
+                    entry,
+                    "filter",
+                    id=f"filter{filter_counter[0]}",
+                    **{"in": in_tc, "out": _tc(cam_seg["start"] + 0.5)},
+                )
                 filter_counter[0] += 1
                 _prop(f, "start", "1")
                 _prop(f, "level", "1")
@@ -199,8 +220,12 @@ def _build_video_playlist(playlist, segments, camera_segments,
 
         # Fade to black on last camera segment of this episode segment
         last_entry = playlist[-1]
-        f = ET.SubElement(last_entry, "filter", id=f"filter{filter_counter[0]}",
-                          **{"in": _tc(seg["end"] - 0.167), "out": _tc(seg["end"])})
+        f = ET.SubElement(
+            last_entry,
+            "filter",
+            id=f"filter{filter_counter[0]}",
+            **{"in": _tc(seg["end"] - 0.167), "out": _tc(seg["end"])},
+        )
         filter_counter[0] += 1
         _prop(f, "start", "1")
         _prop(f, "level", "1")
@@ -209,21 +234,25 @@ def _build_video_playlist(playlist, segments, camera_segments,
         _prop(f, "alpha", "00:00:00.000=1;00:00:00.167=0")
 
         # Closing entry after each episode segment
-        c_entry = ET.SubElement(playlist, "entry", **{
-            "in": "00:00:00.000", "out": CLOSING_LENGTH_TC,
-            "producer": closing_chain
-        })
+        c_entry = ET.SubElement(
+            playlist,
+            "entry",
+            **{"in": "00:00:00.000", "out": CLOSING_LENGTH_TC, "producer": closing_chain},
+        )
         _prop(c_entry, "kdenlive:id", "5")
-        f = ET.SubElement(c_entry, "filter", id=f"filter{filter_counter[0]}",
-                          out="00:00:00.167")
+        f = ET.SubElement(c_entry, "filter", id=f"filter{filter_counter[0]}", out="00:00:00.167")
         filter_counter[0] += 1
         _prop(f, "start", "1")
         _prop(f, "level", "1")
         _prop(f, "mlt_service", "brightness")
         _prop(f, "kdenlive_id", "fade_from_black")
         _prop(f, "alpha", "00:00:00.000=0;00:00:00.167=1")
-        f = ET.SubElement(c_entry, "filter", id=f"filter{filter_counter[0]}",
-                          **{"in": "00:00:03.633", "out": CLOSING_LENGTH_TC})
+        f = ET.SubElement(
+            c_entry,
+            "filter",
+            id=f"filter{filter_counter[0]}",
+            **{"in": "00:00:03.633", "out": CLOSING_LENGTH_TC},
+        )
         filter_counter[0] += 1
         _prop(f, "start", "1")
         _prop(f, "level", "1")
@@ -263,27 +292,34 @@ def generate_vertical_project(
     total_out_tc = _tc(total_dur)
 
     # --- Build MLT root ---
-    mlt = ET.Element("mlt", {
-        "LC_NUMERIC": "C",
-        "producer": "main_bin",
-        "root": root_dir,
-        "version": "7.38.0",
-    })
+    mlt = ET.Element(
+        "mlt",
+        {
+            "LC_NUMERIC": "C",
+            "producer": "main_bin",
+            "root": root_dir,
+            "version": "7.38.0",
+        },
+    )
 
     # Profile
-    ET.SubElement(mlt, "profile", {
-        "colorspace": "709",
-        "description": "Vertical HD 30 fps",
-        "display_aspect_den": "16",
-        "display_aspect_num": "9",
-        "frame_rate_den": "1",
-        "frame_rate_num": "30",
-        "height": "1920",
-        "progressive": "1",
-        "sample_aspect_den": "1",
-        "sample_aspect_num": "1",
-        "width": "1080",
-    })
+    ET.SubElement(
+        mlt,
+        "profile",
+        {
+            "colorspace": "709",
+            "description": "Vertical HD 30 fps",
+            "display_aspect_den": "16",
+            "display_aspect_num": "9",
+            "frame_rate_den": "1",
+            "frame_rate_num": "30",
+            "height": "1920",
+            "progressive": "1",
+            "sample_aspect_den": "1",
+            "sample_aspect_num": "1",
+            "width": "1080",
+        },
+    )
 
     # --- Fixed UUIDs for clip consistency ---
     video_uuid = "{" + str(uuid.uuid4()) + "}"
@@ -335,8 +371,9 @@ def generate_vertical_project(
     _prop(chain7, "mute_on_pause", "0")
 
     # --- Black producer ---
-    prod0 = ET.SubElement(mlt, "producer", id="producer0",
-                          **{"in": "00:00:00.000", "out": total_out_tc})
+    prod0 = ET.SubElement(
+        mlt, "producer", id="producer0", **{"in": "00:00:00.000", "out": total_out_tc}
+    )
     _prop(prod0, "length", "2147483647")
     _prop(prod0, "eof", "continue")
     _prop(prod0, "resource", "black")
@@ -347,9 +384,17 @@ def generate_vertical_project(
     _prop(prod0, "set.test_audio", "0")
 
     # --- Audio track chains (chain0=video audio for A2, chain1=video audio for A1) ---
-    _make_chain(mlt, "chain0", video_basename, kdenlive_id="4", control_uuid=video_uuid,
-                out_tc=video_out_tc, length_tc=video_length_tc,
-                test_audio="0", test_image="1")
+    _make_chain(
+        mlt,
+        "chain0",
+        video_basename,
+        kdenlive_id="4",
+        control_uuid=video_uuid,
+        out_tc=video_out_tc,
+        length_tc=video_length_tc,
+        test_audio="0",
+        test_image="1",
+    )
 
     # --- Audio playlists: A2 (playlist0) = EMPTY, playlist1 = blank ---
     pl0 = ET.SubElement(mlt, "playlist", id="playlist0")
@@ -359,8 +404,9 @@ def generate_vertical_project(
     _prop(pl1, "kdenlive:audio_track", "1")
 
     # --- Audio tractor (tractor0) ---
-    tractor0 = ET.SubElement(mlt, "tractor", id="tractor0",
-                             **{"in": "00:00:00.000", "out": total_out_tc})
+    tractor0 = ET.SubElement(
+        mlt, "tractor", id="tractor0", **{"in": "00:00:00.000", "out": total_out_tc}
+    )
     _prop(tractor0, "kdenlive:audio_track", "1")
     _prop(tractor0, "kdenlive:trackheight", "62")
     _prop(tractor0, "kdenlive:timeline_active", "1")
@@ -381,13 +427,29 @@ def generate_vertical_project(
 
     # --- Video timeline chains ---
     # chain1 = video for audio track (playlist2)
-    _make_chain(mlt, "chain1", video_basename, kdenlive_id="4", control_uuid=video_uuid,
-                out_tc=video_out_tc, length_tc=video_length_tc,
-                test_audio="0", test_image="1")
+    _make_chain(
+        mlt,
+        "chain1",
+        video_basename,
+        kdenlive_id="4",
+        control_uuid=video_uuid,
+        out_tc=video_out_tc,
+        length_tc=video_length_tc,
+        test_audio="0",
+        test_image="1",
+    )
     # chain2 = closing for audio track
-    _make_chain(mlt, "chain2", closing_path, kdenlive_id="5", control_uuid=closing_uuid,
-                out_tc=CLOSING_LENGTH_TC, length_tc=str(CLOSING_LENGTH_FRAMES),
-                test_audio="0", test_image="1")
+    _make_chain(
+        mlt,
+        "chain2",
+        closing_path,
+        kdenlive_id="5",
+        control_uuid=closing_uuid,
+        out_tc=CLOSING_LENGTH_TC,
+        length_tc=str(CLOSING_LENGTH_FRAMES),
+        test_audio="0",
+        test_image="1",
+    )
 
     # --- playlist2: audio track for video timeline ---
     pl2 = ET.SubElement(mlt, "playlist", id="playlist2")
@@ -398,8 +460,9 @@ def generate_vertical_project(
     _prop(pl3, "kdenlive:audio_track", "1")
 
     # --- tractor1: audio for video timeline ---
-    tractor1 = ET.SubElement(mlt, "tractor", id="tractor1",
-                             **{"in": "00:00:00.000", "out": total_out_tc})
+    tractor1 = ET.SubElement(
+        mlt, "tractor", id="tractor1", **{"in": "00:00:00.000", "out": total_out_tc}
+    )
     _prop(tractor1, "kdenlive:audio_track", "1")
     _prop(tractor1, "kdenlive:trackheight", "67")
     _prop(tractor1, "kdenlive:timeline_active", "1")
@@ -418,24 +481,41 @@ def generate_vertical_project(
 
     # --- Video track chains ---
     # chain3 = video for video track (playlist4)
-    _make_chain(mlt, "chain3", video_basename, kdenlive_id="4", control_uuid=video_uuid,
-                out_tc=video_out_tc, length_tc=video_length_tc,
-                test_audio="1", test_image="0")
+    _make_chain(
+        mlt,
+        "chain3",
+        video_basename,
+        kdenlive_id="4",
+        control_uuid=video_uuid,
+        out_tc=video_out_tc,
+        length_tc=video_length_tc,
+        test_audio="1",
+        test_image="0",
+    )
     # chain5 = closing for video track
-    _make_chain(mlt, "chain5", closing_path, kdenlive_id="5", control_uuid=closing_uuid,
-                out_tc=CLOSING_LENGTH_TC, length_tc=str(CLOSING_LENGTH_FRAMES),
-                test_audio="1", test_image="0")
+    _make_chain(
+        mlt,
+        "chain5",
+        closing_path,
+        kdenlive_id="5",
+        control_uuid=closing_uuid,
+        out_tc=CLOSING_LENGTH_TC,
+        length_tc=str(CLOSING_LENGTH_FRAMES),
+        test_audio="1",
+        test_image="0",
+    )
 
     # --- playlist4: video track with qtblend filters ---
     pl4 = ET.SubElement(mlt, "playlist", id="playlist4")
     filter_counter = [10]  # mutable counter for filter IDs
     _build_video_playlist(pl4, segments, camera_segments, "chain3", "chain5", filter_counter)
 
-    pl5 = ET.SubElement(mlt, "playlist", id="playlist5")
+    _ = ET.SubElement(mlt, "playlist", id="playlist5")
 
     # --- tractor2: video track ---
-    tractor2 = ET.SubElement(mlt, "tractor", id="tractor2",
-                             **{"in": "00:00:00.000", "out": total_out_tc})
+    tractor2 = ET.SubElement(
+        mlt, "tractor", id="tractor2", **{"in": "00:00:00.000", "out": total_out_tc}
+    )
     _prop(tractor2, "kdenlive:trackheight", "67")
     _prop(tractor2, "kdenlive:timeline_active", "1")
     _prop(tractor2, "kdenlive:collapsed", "0")
@@ -443,8 +523,9 @@ def generate_vertical_project(
     ET.SubElement(tractor2, "track", hide="audio", producer="playlist5")
 
     # --- Main sequence tractor (tractor3) ---
-    tractor3 = ET.SubElement(mlt, "tractor", id="tractor3",
-                             **{"in": "00:00:00.000", "out": total_out_tc})
+    tractor3 = ET.SubElement(
+        mlt, "tractor", id="tractor3", **{"in": "00:00:00.000", "out": total_out_tc}
+    )
     _prop(tractor3, "kdenlive:duration", _tc(total_dur + 0.033))
     _prop(tractor3, "kdenlive:clipname", "Sequência 1")
     _prop(tractor3, "kdenlive:description", "")
@@ -507,23 +588,24 @@ def generate_vertical_project(
     _prop(main_bin, "kdenlive:docproperties.uuid", seq_uuid)
     _prop(main_bin, "kdenlive:docproperties.version", "1.1")
     _prop(main_bin, "xml_retain", "1")
-    ET.SubElement(main_bin, "entry", **{
-        "in": "00:00:00.000", "out": video_out_tc, "producer": "chain4"
-    })
-    ET.SubElement(main_bin, "entry", **{
-        "in": "00:00:00.000", "out": CLOSING_LENGTH_TC, "producer": "chain7"
-    })
-    ET.SubElement(main_bin, "entry", **{
-        "in": "00:00:00.000", "out": total_out_tc, "producer": "tractor3"
-    })
+    ET.SubElement(
+        main_bin, "entry", **{"in": "00:00:00.000", "out": video_out_tc, "producer": "chain4"}
+    )
+    ET.SubElement(
+        main_bin, "entry", **{"in": "00:00:00.000", "out": CLOSING_LENGTH_TC, "producer": "chain7"}
+    )
+    ET.SubElement(
+        main_bin, "entry", **{"in": "00:00:00.000", "out": total_out_tc, "producer": "tractor3"}
+    )
 
     # --- Project tractor ---
-    tractor_proj = ET.SubElement(mlt, "tractor", id="tractor4",
-                                 **{"in": "00:00:00.000", "out": total_out_tc})
+    tractor_proj = ET.SubElement(
+        mlt, "tractor", id="tractor4", **{"in": "00:00:00.000", "out": total_out_tc}
+    )
     _prop(tractor_proj, "kdenlive:projectTractor", "1")
-    ET.SubElement(tractor_proj, "track", **{
-        "in": "00:00:00.000", "out": total_out_tc, "producer": "tractor3"
-    })
+    ET.SubElement(
+        tractor_proj, "track", **{"in": "00:00:00.000", "out": total_out_tc, "producer": "tractor3"}
+    )
 
     # --- Write output ---
     tree = ET.ElementTree(mlt)

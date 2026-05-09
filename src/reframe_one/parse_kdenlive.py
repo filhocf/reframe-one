@@ -114,10 +114,12 @@ def parse_project(path: str) -> ProjectInfo:
             if text and text != "[]":
                 for g in json.loads(text):
                     pos_frames = g.get("pos", 0)
-                    guides.append(Guide(
-                        pos_seconds=round(pos_frames / fps, 3),
-                        comment=g.get("comment", ""),
-                    ))
+                    guides.append(
+                        Guide(
+                            pos_seconds=round(pos_frames / fps, 3),
+                            comment=g.get("comment", ""),
+                        )
+                    )
             break
 
     return ProjectInfo(
