@@ -75,8 +75,10 @@ def _get_camera_at(camera_segments: list[dict], time_s: float) -> str:
     return "unknown"
 
 
-def _make_qtblend_filter(parent, filter_id, seg_start, seg_end, camera_segments):
+def _make_qtblend_filter(parent, filter_id, seg_start, seg_end, camera_segments, cameras=None):
     """Create a qtblend filter with multiple keyframes based on camera changes within segment."""
+    if cameras is None:
+        cameras = CAMERA_POSITIONS
     # Find all camera changes within this segment's time range
     keyframes = []
     for cs in camera_segments:
@@ -84,16 +86,16 @@ def _make_qtblend_filter(parent, filter_id, seg_start, seg_end, camera_segments)
         if cs["end"] is not None and cs["start"] < seg_end and cs["end"] > seg_start:
             # Keyframe time is relative to the entry's in-point in Kdenlive
             kf_time = max(cs["start"], seg_start)
-            x, y, w, h = CAMERA_POSITIONS.get(cs["camera"], CAMERA_POSITIONS["unknown"])
+            x, y, w, h = cameras.get(cs["camera"], cameras["unknown"])
             keyframes.append((kf_time, x, y, w, h))
         elif cs["end"] is None and cs["start"] >= seg_start and cs["start"] < seg_end:
             kf_time = cs["start"]
-            x, y, w, h = CAMERA_POSITIONS.get(cs["camera"], CAMERA_POSITIONS["unknown"])
+            x, y, w, h = cameras.get(cs["camera"], cameras["unknown"])
             keyframes.append((kf_time, x, y, w, h))
 
     # If no keyframes found, use fallback
     if not keyframes:
-        x, y, w, h = CAMERA_POSITIONS["unknown"]
+        x, y, w, h = cameras["unknown"]
         keyframes = [(seg_start, x, y, w, h)]
 
     filt = ET.SubElement(parent, "filter", id=filter_id)
@@ -155,7 +157,7 @@ def _build_audio_playlist(playlist, segments, camera_segments, video_chain, clos
 
 
 def _build_video_playlist(
-    playlist, segments, camera_segments, video_chain, closing_chain, filter_counter
+    playlist, segments, camera_segments, video_chain, closing_chain, filter_counter, cameras=None
 ):
     """Build video playlist with one entry per camera segment (hard cuts)."""
     for seg_idx, seg in enumerate(segments):
@@ -190,7 +192,9 @@ def _build_video_playlist(
                 x = cam_seg["pan_x"]
                 y, w, h = -2112, 3456, 6144
             else:
-                x, y, w, h = CAMERA_POSITIONS.get(cam_seg["camera"], CAMERA_POSITIONS["unknown"])
+                x, y, w, h = (cameras or CAMERA_POSITIONS).get(
+                    cam_seg["camera"], (cameras or CAMERA_POSITIONS)["unknown"]
+                )
 
             entry = ET.SubElement(
                 playlist, "entry", **{"in": in_tc, "out": out_tc, "producer": video_chain}
@@ -275,6 +279,7 @@ def generate_vertical_project(
     camera_segments: list[dict],
     output_path: str,
     subtitle_path: str = "",
+    camera_positions: dict | None = None,
 ):
     """Generate a complete Kdenlive .kdenlive project for vertical cuts.
 
@@ -285,7 +290,11 @@ def generate_vertical_project(
         camera_segments: list of {start: float, end: float, camera: str}
         output_path: where to save the .kdenlive file
         subtitle_path: optional path to .ass subtitle file to embed
+        camera_positions: optional dict of camera name → (x, y, w, h) overrides
     """
+    # Merge camera positions (override defaults with config)
+    cameras = {**CAMERA_POSITIONS, **(camera_positions or {})}
+
     root_dir = os.path.dirname(video_path)
     video_basename = os.path.basename(video_path)
     seq_uuid = "{" + str(uuid.uuid4()) + "}"
@@ -517,7 +526,9 @@ def generate_vertical_project(
     # --- playlist4: video track with qtblend filters ---
     pl4 = ET.SubElement(mlt, "playlist", id="playlist4")
     filter_counter = [10]  # mutable counter for filter IDs
-    _build_video_playlist(pl4, segments, camera_segments, "chain3", "chain5", filter_counter)
+    _build_video_playlist(
+        pl4, segments, camera_segments, "chain3", "chain5", filter_counter, cameras
+    )
 
     _ = ET.SubElement(mlt, "playlist", id="playlist5")
 
@@ -649,4 +660,5 @@ def generate_vertical_project(
     tree = ET.ElementTree(mlt)
     ET.indent(tree, space=" ")
     tree.write(output_path, encoding="utf-8", xml_declaration=True)
+
     print(f"Generated: {output_path}")
