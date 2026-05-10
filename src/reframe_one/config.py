@@ -12,7 +12,7 @@ DEFAULT_CAMERAS = {
     "unknown": (-1400, -2112, 3456, 6144),
 }
 
-DEFAULT_CLOSING = "/home/claudio/Insync/ssd/papo-saude/00 Comum/fechamento papo podcast Insta.mp4"
+DEFAULT_CLOSING = ""
 
 
 @dataclass
@@ -53,6 +53,9 @@ def load_config(path: str | None) -> EpisodeConfig:
 
 def _parse_config(data: dict) -> EpisodeConfig:
     """Parse config dict into EpisodeConfig."""
+    if not data:
+        return EpisodeConfig()
+
     config = EpisodeConfig()
 
     if "cameras" in data:

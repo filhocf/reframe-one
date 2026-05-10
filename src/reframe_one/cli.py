@@ -9,8 +9,6 @@ from .parse_kdenlive import parse_project
 from .scene_detect import classify_cameras, detect_scenes, save_scenes
 from .subtitles import generate_karaoke_ass, load_whisper_json
 
-CLOSING_PATH = "/home/claudio/Insync/ssd/papo-saude/00 Comum/fechamento papo podcast Insta.mp4"
-
 
 def main():
     parser = argparse.ArgumentParser(description="reframe-one: vertical reframing for podcasts")
@@ -31,7 +29,7 @@ def main():
     p_gen = sub.add_parser("generate", help="Generate vertical .kdenlive from source project")
     p_gen.add_argument("input", help="Input .kdenlive project file")
     p_gen.add_argument("--transcript", help="Whisper JSON transcript (optional)")
-    p_gen.add_argument("--closing", default=CLOSING_PATH, help="Closing video path")
+    p_gen.add_argument("--closing", default=None, help="Closing video path (overrides config)")
     p_gen.add_argument("--threshold", type=float, default=0.3, help="Scene detection threshold")
     p_gen.add_argument("--config", help="Episode config file (JSON/YAML)")
     p_gen.add_argument("--clips", help="Time ranges to include (e.g. '0:30-1:45,3:00-4:20')")
@@ -141,7 +139,7 @@ def _cmd_generate(args):
     print("[6/6] Generating vertical project...")
     generate_vertical_project(
         video_path=video_path,
-        closing_path=ep_config.closing if not args.closing else args.closing,
+        closing_path=args.closing or ep_config.closing,
         segments=segments,
         camera_segments=camera_segments,
         output_path=output_path,
