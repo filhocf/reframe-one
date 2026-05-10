@@ -634,6 +634,9 @@ def generate_vertical_project(
     _prop(tractor4, "kdenlive:sequenceproperties.tracks", "4")
     _prop(tractor4, "kdenlive:sequenceproperties.tracksCount", "4")
     _prop(tractor4, "kdenlive:sequenceproperties.videoTarget", "2")
+    _prop(tractor4, "kdenlive:sequenceproperties.zonein", "0")
+    _prop(tractor4, "kdenlive:sequenceproperties.zoneout", str(int(total_dur * FPS)))
+    _prop(tractor4, "kdenlive:docproperties.enableTimelineZone", "1")
 
     # Subtitle properties
     if subtitle_path:
