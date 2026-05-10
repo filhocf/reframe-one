@@ -2,7 +2,7 @@
 name = "reframe-one"
 version = "0.1.0"
 description = "Automated vertical reframing for podcast videos"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 license = "MIT"
 dependencies = [
     "opencv-python>=4.10",

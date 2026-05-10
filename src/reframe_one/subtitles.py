@@ -73,9 +73,7 @@ Example input: ["Então", " a", " vi-", " vi-", " violência", " né", " contra"
 Example output: {"remove_indices": [0, 2, 3, 5]}"""
 
 
-def clean_words_with_llm(
-    words: list[dict], config: LLMConfig | None = None
-) -> list[dict]:
+def clean_words_with_llm(words: list[dict], config: LLMConfig | None = None) -> list[dict]:
     """Remove fillers and stutters using LLM. Returns filtered word list."""
     if config is None:
         return words
