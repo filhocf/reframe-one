@@ -25,4 +25,4 @@ jobs:
           uv venv --python 3.12
           uv pip install pysubs2 numpy httpx pytest
           uv pip install -e . --no-deps
-      - run: uv run pytest tests/ -v --ignore=tests/test_integration.py
+      - run: .venv/bin/pytest tests/ -v --ignore=tests/test_integration.py
