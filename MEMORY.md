@@ -3,28 +3,33 @@
 ## Estado Atual
 
 - **Versão**: 0.1.0-dev (não publicado)
-- **Status**: primeiro teste funcional gerado, com bugs de XML sendo corrigidos
-- **Último teste**: ep 04 (Silvana e Melissa) — .kdenlive gerado com 127 keyframes de pan
+- **Status**: pipeline funcional, testado com ep 04, abre no Kdenlive sem erros
+- **Último teste**: ep 04 (Silvana e Melissa) — 127 cortes, 91 com speaker detection, 4 trilhas OK
+- **Commits**: 12 (main)
+- **Testes**: 21 passando
 
-## Sessão Atual (09/mai/2026 sirdata)
+## Sessão 09/mai/2026 (sirdata)
 
 ### Feito
-- Repo criado: https://github.com/filhocf/reframe-one
-- Pipeline completo implementado: parse → scenes → classify → subs → kdenlive
-- Testado com ep 04: gera .kdenlive + .ass
-- Fix: UUIDs consistentes entre chains (eliminava erros de bin no Kdenlive)
-- Fix: múltiplos keyframes por segmento (antes era 1 só por segmento inteiro)
+- Repo criado e pipeline completo implementado em 1 sessão
+- Scene detection (ffmpeg) + camera classification (OpenCV face count)
+- Speaker detection (MediaPipe FaceLandmarker lip movement)
+- Karaoke subtitles (ASS com tags \k)
+- Kdenlive XML generation (vertical 1080x1920, hard cuts)
+- CI: GitHub Actions (ruff + pytest), Gemini Code Assist
+- Docs: README, PRD, ARCHITECTURE, MEMORY, CHANGELOG
 
-### Problemas Conhecidos
-- Kdenlive abriu com warnings "Clipe inválido recuperado" (fix de UUID aplicado, retestar)
-- Classificação de câmera pode ter falsos positivos (face detection nem sempre acerta)
-- Posições X são fixas (-1400/-1900) — no manual, Claudio ajusta ±100px por episódio
+### Bugs corrigidos
+- UUIDs inconsistentes entre chains → mesmo UUID por clip
+- Keyframes interpolados → 1 entry por corte (hard cut)
+- A2 com entries → A2 vazio, A1 espelha V1
+- Falta V2 → adicionada trilha V2 vazia
+- Central sem zoom → central com zoom (X=-1200)
 
 ### Próximo
-- Validar que o .kdenlive abre sem erros após fix de UUID
-- Verificar se os keyframes de pan estão nos momentos corretos
-- Testar render de 1 corte no Kdenlive
-- Implementar lip movement detection (fase 2)
+- Legendas: ~50 chars, remover fillers, quebra inteligente
+- Integrar ASS no .kdenlive
+- Seleção de cortes, config por episódio
 
 ## Decisões
 
