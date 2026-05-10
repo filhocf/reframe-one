@@ -37,15 +37,17 @@ def select_by_time_ranges(
 
 
 def parse_time_ranges(spec: str) -> list[tuple[float, float]]:
-    """Parse time range spec like '0:30-1:45,3:00-4:20' into seconds tuples."""
+    """Parse time range spec like '0:30-1:45,3:00-4:20' or '1:02:30-1:05:00'."""
     ranges = []
     for part in spec.split(","):
         part = part.strip()
-        match = re.match(r"(\d+):(\d+(?:\.\d+)?)-(\d+):(\d+(?:\.\d+)?)", part)
-        if match:
-            start = int(match.group(1)) * 60 + float(match.group(2))
-            end = int(match.group(3)) * 60 + float(match.group(4))
-            ranges.append((start, end))
+        # Match H:MM:SS, M:SS, or just seconds
+        times = part.split("-")
+        if len(times) == 2:
+            start = _parse_time_value(times[0].strip())
+            end = _parse_time_value(times[1].strip())
+            if start is not None and end is not None:
+                ranges.append((start, end))
     return ranges
 
 
@@ -68,7 +70,7 @@ def select_by_llm(
     for i, seg in enumerate(segments):
         # Find transcript text overlapping this segment
         text = _get_text_for_range(transcript_segments, seg["start"], seg["end"])
-        seg_texts.append(f"[{i}] ({seg['start']:.1f}s-{seg['end']:.1f}s): {text[:200]}")
+        seg_texts.append(f"[{i}] ({seg['start']:.1f}s-{seg['end']:.1f}s): {text[:500]}")
 
     user_msg = "\n".join(seg_texts)
     response = llm_chat(config, SCORING_PROMPT, user_msg)
@@ -90,7 +92,7 @@ def load_clips_file(path: str) -> list[tuple[float, float]]:
     Expected format: [{"start": 30.0, "end": 105.0}, ...]
     or: [{"start": "0:30", "end": "1:45"}, ...]
     """
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         data = json.load(f)
 
     ranges = []
@@ -101,14 +103,24 @@ def load_clips_file(path: str) -> list[tuple[float, float]]:
     return ranges
 
 
-def _parse_time_value(val) -> float:
-    """Parse time value — float seconds or 'M:SS' string."""
+def _parse_time_value(val) -> float | None:
+    """Parse time value — float seconds, 'M:SS', or 'H:MM:SS' string."""
     if isinstance(val, (int, float)):
         return float(val)
-    match = re.match(r"(\d+):(\d+(?:\.\d+)?)", str(val))
+    s = str(val).strip()
+    # H:MM:SS or HH:MM:SS
+    match = re.match(r"(\d+):(\d+):(\d+(?:\.\d+)?)", s)
+    if match:
+        return int(match.group(1)) * 3600 + int(match.group(2)) * 60 + float(match.group(3))
+    # M:SS
+    match = re.match(r"(\d+):(\d+(?:\.\d+)?)", s)
     if match:
         return int(match.group(1)) * 60 + float(match.group(2))
-    return float(val)
+    # Plain seconds
+    try:
+        return float(s)
+    except ValueError:
+        return None
 
 
 def _get_text_for_range(transcript_segments: list[dict], start: float, end: float) -> str:
