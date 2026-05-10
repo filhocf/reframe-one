@@ -1,6 +1,7 @@
 """CLI for reframe-one."""
 
 import argparse
+import json
 import os
 import sys
 
@@ -37,6 +38,7 @@ def main():
     p_gen.add_argument(
         "--auto-select", action="store_true", help="Use LLM to score and select clips"
     )
+    p_gen.add_argument("--steps", help="Run only these steps (comma-separated: 1-6). Default: all")
 
     args = parser.parse_args()
 
@@ -62,87 +64,158 @@ def main():
 
 def _cmd_generate(args):
     """Generate vertical .kdenlive project."""
+    import time as _time
+
     from .config import load_config
 
+    t0 = _time.time()
     ep_config = load_config(args.config)
     input_path = args.input
-    print(f"[1/5] Parsing project: {input_path}")
+
+    # Parse steps
+    run_steps = set(range(1, 7))  # default: all
+    if args.steps:
+        run_steps = {int(s.strip()) for s in args.steps.split(",")}
+
+    # Cache path
+    base = os.path.splitext(input_path)[0]
+    cache_path = base + "-cache.json"
+
+    print("=" * 60)
+    print("  reframe-one — Vertical Reframing Pipeline")
+    print("=" * 60)
+    print(f"\n📂 Input: {input_path}")
+    if args.config:
+        print(f"⚙️  Config: {args.config}")
+    print()
+
+    # --- Step 1: Parse ---
+    t1 = _time.time()
+    print("[1/6] Parsing source project...")
     project = parse_project(input_path)
 
     video_path = project.raw_video_path
     if not os.path.exists(video_path):
-        print(f"ERROR: Raw video not found: {video_path}")
+        print(f"  ❌ ERROR: Raw video not found: {video_path}")
         sys.exit(1)
 
     segments = [{"start": s.in_seconds, "end": s.out_seconds} for s in project.segments]
-    print(f"  Found {len(segments)} segments in source project")
+    total_source_dur = sum(s["end"] - s["start"] for s in segments)
+    print(f"  📹 Video: {os.path.basename(video_path)}")
+    print(f"  🎬 Segments: {len(segments)} ({total_source_dur:.1f}s total)")
+    print(f"  ⏱️  {_time.time() - t1:.1f}s")
 
-    # Filter clips if specified
+    # --- Clip filtering ---
     if args.clips or args.clips_file:
         from .clip_selector import load_clips_file, parse_time_ranges, select_by_time_ranges
 
         if args.clips_file:
             time_ranges = load_clips_file(args.clips_file)
+            print(f"\n  ✂️  Filtering by clips file: {args.clips_file}")
         else:
             time_ranges = parse_time_ranges(args.clips)
+            print(f"\n  ✂️  Filtering by time ranges: {args.clips}")
         segments = select_by_time_ranges(segments, time_ranges)
-        print(f"  Filtered to {len(segments)} clips")
+        filtered_dur = sum(s["end"] - s["start"] for s in segments)
+        print(f"  → {len(segments)} clips selected ({filtered_dur:.1f}s)")
     elif args.auto_select and args.transcript:
         from .clip_selector import select_by_llm
         from .llm import LLMConfig
         from .subtitles import load_whisper_json as _load_wj
 
-        print("  Auto-selecting clips via LLM...")
+        print("\n  🤖 Auto-selecting clips via LLM...")
         transcript_segs = _load_wj(args.transcript)
         segments = select_by_llm(segments, transcript_segs, LLMConfig())
-        print(f"  Selected {len(segments)} clips")
+        filtered_dur = sum(s["end"] - s["start"] for s in segments)
+        print(f"  → {len(segments)} clips selected ({filtered_dur:.1f}s)")
 
-    print(f"[2/5] Detecting scenes in: {os.path.basename(video_path)}")
-    scenes = detect_scenes(video_path, args.threshold)
-    print(f"  Found {len(scenes)} scene changes")
+    # --- Step 2: Scene detection ---
+    t2 = _time.time()
+    if 2 in run_steps:
+        print(f"\n[2/6] Detecting scenes (threshold={args.threshold})...")
+        scenes = detect_scenes(video_path, args.threshold)
+        print(f"  🎞️  {len(scenes)} scene changes detected")
+        print(f"  ⏱️  {_time.time() - t2:.1f}s")
+    else:
+        cache = _load_cache(cache_path)
+        scenes_data = cache.get("scenes", [])
+        from .scene_detect import SceneChange
 
-    print("[3/6] Classifying cameras...")
+        scenes = [SceneChange(timestamp=s["timestamp"], score=s["score"]) for s in scenes_data]
+        print(f"\n[2/6] Loaded {len(scenes)} scenes from cache")
 
-    def _progress(current, total):
-        pct = current * 100 // total
-        print(f"\r  [{current}/{total}] {pct}% classifying...", end="", flush=True)
+    # --- Step 3: Camera classification ---
+    t3 = _time.time()
+    if 3 in run_steps:
+        print(f"\n[3/6] Classifying cameras ({len(scenes)} scenes)...")
 
-    camera_segments = classify_cameras(video_path, scenes, progress_cb=_progress)
-    print(f"\r  Classified {len(camera_segments)} camera segments     ")
+        def _progress(current, total):
+            pct = current * 100 // total
+            print(f"\r  [{current}/{total}] {pct}%", end="", flush=True)
 
-    print("[4/6] Detecting speakers (lip movement)...")
-    from .speaker_detect import detect_speaker_position, x_position_to_pan
+        camera_segments = classify_cameras(video_path, scenes, progress_cb=_progress)
+    else:
+        cache = _load_cache(cache_path)
+        camera_segments = cache.get("camera_segments", [])
+        print(f"\n[3/6] Loaded {len(camera_segments)} camera segments from cache")
+    cam_counts = {}
+    for cs in camera_segments:
+        cam_counts[cs["camera"]] = cam_counts.get(cs["camera"], 0) + 1
+    cam_summary = ", ".join(f"{k}={v}" for k, v in sorted(cam_counts.items()))
+    if 3 in run_steps:
+        print(f"\r  📷 {len(camera_segments)} segments: {cam_summary}     ")
+        print(f"  ⏱️  {_time.time() - t3:.1f}s")
 
-    speaker_count = 0
-    total = len(camera_segments)
-    for idx, cs in enumerate(camera_segments):
-        pct = (idx + 1) * 100 // total
-        print(f"\r  [{idx + 1}/{total}] {pct}% analyzing...", end="", flush=True)
-        if cs["end"] is None or (cs["end"] - cs["start"]) < 1.0:
-            continue
-        face_x = detect_speaker_position(video_path, cs["start"], cs["end"], num_frames=5)
-        if face_x is not None:
-            cs["pan_x"] = x_position_to_pan(face_x)
-            speaker_count += 1
-    print(f"\r  Detected speaker in {speaker_count}/{total} segments     ")
+    # --- Step 4: Speaker detection ---
+    t4 = _time.time()
+    if 4 in run_steps:
+        print(f"\n[4/6] Detecting speakers ({len(camera_segments)} segments)...")
+        from .speaker_detect import detect_speaker_position, x_position_to_pan
 
-    # Generate ASS if transcript provided
+        speaker_count = 0
+        total = len(camera_segments)
+        for idx, cs in enumerate(camera_segments):
+            pct = (idx + 1) * 100 // total
+            print(f"\r  [{idx + 1}/{total}] {pct}%", end="", flush=True)
+            if cs["end"] is None or (cs["end"] - cs["start"]) < 1.0:
+                continue
+            face_x = detect_speaker_position(video_path, cs["start"], cs["end"], num_frames=5)
+            if face_x is not None:
+                cs["pan_x"] = x_position_to_pan(face_x)
+                speaker_count += 1
+        spk_pct = speaker_count * 100 // max(total, 1)
+        print(f"\r  🗣️  Speaker: {speaker_count}/{total} ({spk_pct}%)     ")
+        print(f"  ⏱️  {_time.time() - t4:.1f}s")
+    else:
+        # camera_segments already loaded from cache (includes pan_x)
+        speaker_count = sum(1 for cs in camera_segments if "pan_x" in cs)
+        total = len(camera_segments)
+        print(f"\n[4/6] Loaded speaker data from cache ({speaker_count}/{total})")
+
+    # Save cache after expensive steps
+    if run_steps & {2, 3, 4}:
+        _save_cache(cache_path, scenes, camera_segments)
+        print(f"\n  💾 Cache saved: {os.path.basename(cache_path)}")
+
+    # --- Step 5: Subtitles ---
+    t5 = _time.time()
     ass_output = ""
     if args.transcript:
-        print("[5/6] Generating karaoke subtitles...")
+        print(f"\n[5/6] Generating subtitles (style={ep_config.subtitle_style})...")
         whisper_segs = load_whisper_json(args.transcript)
         base = os.path.splitext(input_path)[0]
         ass_output = base + "-cortes.ass"
         generate_karaoke_ass(whisper_segs, ass_output)
-        print(f"  Generated: {ass_output}")
+        print(f"  📝 {ass_output}")
+        print(f"  ⏱️  {_time.time() - t5:.1f}s")
     else:
-        print("[5/6] Skipping subtitles (no --transcript)")
+        print("\n[5/6] Skipping subtitles (no --transcript)")
 
-    # Generate output path
+    # --- Step 6: Generate .kdenlive ---
+    t6 = _time.time()
     base = os.path.splitext(input_path)[0]
     output_path = base + "-cortes.kdenlive"
-
-    print("[6/6] Generating vertical project...")
+    print("\n[6/6] Generating vertical project...")
     generate_vertical_project(
         video_path=video_path,
         closing_path=args.closing or ep_config.closing,
@@ -152,8 +225,39 @@ def _cmd_generate(args):
         subtitle_path=ass_output,
         camera_positions=ep_config.cameras,
     )
+    print(f"  📄 {output_path}")
+    print(f"  ⏱️  {_time.time() - t6:.1f}s")
+
+    # --- Summary ---
+    total_time = _time.time() - t0
+    print(f"\n{'=' * 60}")
+    print(f"  ✅ Pipeline complete in {total_time:.1f}s")
+    print(f"{'=' * 60}")
+    print(f"  Clips: {len(segments)}")
+    print(f"  Cameras: {len(camera_segments)} segments ({cam_summary})")
+    print(f"  Speakers: {speaker_count}/{total} detected")
+    print(f"  Subtitles: {'yes' if ass_output else 'no'}")
     print(f"  Output: {output_path}")
-    print("Done!")
+    print("\n  → Open in Kdenlive to review and render")
+    print()
+
+
+def _load_cache(path: str) -> dict:
+    """Load cached intermediate results."""
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+def _save_cache(path: str, scenes, camera_segments: list[dict]):
+    """Save intermediate results for reuse."""
+    data = {
+        "scenes": [{"timestamp": s.timestamp, "score": s.score} for s in scenes],
+        "camera_segments": camera_segments,
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
 
 
 if __name__ == "__main__":
