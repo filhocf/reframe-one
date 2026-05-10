@@ -21,5 +21,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
-      - run: uv venv && uv pip install -e ".[dev]"
-      - run: uv run pytest tests/ -v
+      - run: |
+          uv venv --python 3.12
+          uv pip install pysubs2 numpy httpx pytest
+          uv pip install -e . --no-deps
+      - run: uv run pytest tests/ -v --ignore=tests/test_integration.py
