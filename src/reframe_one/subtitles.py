@@ -49,7 +49,7 @@ STYLE_PRESETS: dict[str, SubtitleStyle] = {
         font="Arial",
         fontsize=100,
         active_color="&H00FFFFFF",  # White
-        inactive_color="&H00000000",  # Hidden (transparent)
+        inactive_color="&HFF000000",  # Transparent (FF alpha)
         outline_color="&H00000000",
         outline=6.0,
         margin_v=500,
@@ -141,6 +141,61 @@ def load_whisper_json(path: str) -> list[dict]:
     return data.get("segments", [])
 
 
+def _batch_clean_segments(segments: list[dict], llm_config: LLMConfig | None) -> list[list[dict]]:
+    """Clean all segments in a single LLM call (or local fallback)."""
+    results = []
+    if not llm_config:
+        for seg in segments:
+            words = seg.get("words", [])
+            results.append(clean_words_local(words) if words else [])
+        return results
+
+    # Batch: send all segments' words in one LLM call
+    all_words = [seg.get("words", []) for seg in segments]
+    non_empty = [(i, words) for i, words in enumerate(all_words) if words]
+
+    if not non_empty:
+        return [[] for _ in segments]
+
+    # Build batch request: list of word lists
+    batch_texts = [
+        json.dumps([w["word"] for w in words], ensure_ascii=False) for _, words in non_empty
+    ]
+    batch_msg = "Process each line separately:\n" + "\n".join(
+        f"[{i}] {t}" for i, t in enumerate(batch_texts)
+    )
+
+    batch_prompt = CLEANUP_SYSTEM_PROMPT.replace(
+        "Return ONLY a JSON",
+        'Return ONLY a JSON with "results" array, one entry per input line.'
+        ' Each entry has "remove_indices"',
+    )
+
+    response = llm_chat(llm_config, batch_prompt, batch_msg)
+
+    # Parse batch response
+    batch_results: dict = {}
+    if response:
+        try:
+            data = json.loads(response)
+            for idx, entry in enumerate(data.get("results", [])):
+                batch_results[idx] = set(entry.get("remove_indices", []))
+        except (json.JSONDecodeError, KeyError, TypeError):
+            pass  # fallback to local
+
+    # Build final results
+    results = [[] for _ in segments]
+    for batch_idx, (seg_idx, words) in enumerate(non_empty):
+        if batch_idx in batch_results:
+            remove = batch_results[batch_idx]
+            results[seg_idx] = [w for i, w in enumerate(words) if i not in remove]
+        else:
+            # LLM failed for this segment, use local fallback
+            results[seg_idx] = clean_words_local(words)
+
+    return results
+
+
 def generate_ass(
     segments: list[dict],
     output_path: str,
@@ -178,7 +233,10 @@ def generate_ass(
     )
     subs.styles["Default"] = ass_style
 
-    for seg in segments:
+    # Batch LLM cleanup: process all segments at once to minimize API calls
+    cleaned_segments = _batch_clean_segments(segments, llm_config)
+
+    for seg, cleaned_words in zip(segments, cleaned_segments):
         words = seg.get("words", [])
         if not words:
             start_ms = int(seg["start"] * 1000)
@@ -187,17 +245,11 @@ def generate_ass(
             subs.events.append(event)
             continue
 
-        # Clean text
-        if llm_config:
-            cleaned = clean_words_with_llm(words, llm_config)
-        else:
-            cleaned = clean_words_local(words)
-
-        if not cleaned:
+        if not cleaned_words:
             continue
 
         # Break into lines
-        lines = break_into_lines(cleaned, max_chars)
+        lines = break_into_lines(cleaned_words, max_chars)
 
         # Generate events per line
         for line_words in lines:
@@ -234,8 +286,11 @@ def _build_word_pop(words: list[dict]) -> str:
 
 
 def _parse_ass_color(color_str: str) -> tuple[int, int, int, int]:
-    """Parse ASS color string like &H0000FFFF to (r, g, b, a)."""
-    hex_str = color_str.replace("&H", "").replace("&h", "")
+    """Parse ASS color string like &H0000FFFF to (r, g, b, a).
+
+    ASS format: &HAABBGGRR where AA=alpha (00=opaque, FF=transparent).
+    """
+    hex_str = color_str.replace("&H", "").replace("&h", "").ljust(8, "0")
     a = int(hex_str[0:2], 16)
     b = int(hex_str[2:4], 16)
     g = int(hex_str[4:6], 16)

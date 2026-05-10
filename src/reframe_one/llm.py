@@ -35,7 +35,11 @@ def llm_chat(config: LLMConfig, system: str, user: str) -> str | None:
             return _ollama_chat(config, system, user)
         else:
             return _openai_chat(config, system, user)
-    except Exception:
+    except httpx.TimeoutException:
+        return None
+    except httpx.HTTPStatusError:
+        return None
+    except (httpx.ConnectError, OSError):
         return None
 
 
