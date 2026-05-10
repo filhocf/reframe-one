@@ -102,8 +102,13 @@ def _cmd_generate(args):
     print(f"  Found {len(scenes)} scene changes")
 
     print("[3/6] Classifying cameras...")
-    camera_segments = classify_cameras(video_path, scenes)
-    print(f"  Classified {len(camera_segments)} camera segments")
+
+    def _progress(current, total):
+        pct = current * 100 // total
+        print(f"\r  [{current}/{total}] {pct}% classifying...", end="", flush=True)
+
+    camera_segments = classify_cameras(video_path, scenes, progress_cb=_progress)
+    print(f"\r  Classified {len(camera_segments)} camera segments     ")
 
     print("[4/6] Detecting speakers (lip movement)...")
     from .speaker_detect import detect_speaker_position, x_position_to_pan
@@ -111,7 +116,8 @@ def _cmd_generate(args):
     speaker_count = 0
     total = len(camera_segments)
     for idx, cs in enumerate(camera_segments):
-        print(f"\r  [{idx + 1}/{total}] Analyzing...", end="", flush=True)
+        pct = (idx + 1) * 100 // total
+        print(f"\r  [{idx + 1}/{total}] {pct}% analyzing...", end="", flush=True)
         if cs["end"] is None or (cs["end"] - cs["start"]) < 1.0:
             continue
         face_x = detect_speaker_position(video_path, cs["start"], cs["end"], num_frames=5)
