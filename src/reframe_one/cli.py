@@ -84,7 +84,7 @@ def _cmd_generate(args):
     speaker_count = 0
     total = len(camera_segments)
     for idx, cs in enumerate(camera_segments):
-        print(f"\r  [{idx+1}/{total}] Analyzing...", end="", flush=True)
+        print(f"\r  [{idx + 1}/{total}] Analyzing...", end="", flush=True)
         if cs["end"] is None or (cs["end"] - cs["start"]) < 1.0:
             continue
         face_x = detect_speaker_position(video_path, cs["start"], cs["end"], num_frames=5)

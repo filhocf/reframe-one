@@ -70,7 +70,7 @@ def test_a1_mirrors_v1_count():
     pl4 = tree.find('.//playlist[@id="playlist4"]')
 
     a1_entries = pl2.findall("entry")
-    v1_video_entries = [e for e in pl4.findall("entry") if "chain3" in (e.get("producer") or "")]
+    _v1_video_entries = [e for e in pl4.findall("entry") if "chain3" in (e.get("producer") or "")]
 
     # A1 has video entries + closing entries, V1 has video entries + closing entries
     # They should match

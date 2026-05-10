@@ -4,9 +4,8 @@ import os
 import subprocess
 import tempfile
 
-import numpy as np
-
 import mediapipe as mp
+import numpy as np
 from mediapipe.tasks.python import BaseOptions, vision
 
 # Inner lip landmark indices in MediaPipe Face Mesh (478 landmarks)
