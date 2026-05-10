@@ -135,6 +135,16 @@ def _heuristic_boundaries(
 ) -> list[dict]:
     """Heuristic: start at sentence boundary, end before next cut."""
     segs = transcript_segments
+    if not segs:
+        # No transcript: use raw times with fixed 90s duration
+        return [
+            {
+                "start": round(c["time_s"] + offset_s, 2),
+                "end": round(c["time_s"] + offset_s + 90, 2),
+                "title": c["title"],
+            }
+            for c in cuts
+        ]
     clips = []
 
     for i, cut in enumerate(cuts):

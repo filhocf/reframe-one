@@ -272,7 +272,7 @@ def generate_ass(
 
         # Generate events per line
         for line_words in lines:
-            if style.name == "papo-saude" and len(segments) < 50:
+            if False and style.name == "papo-saude":  # disabled: too heavy for full episodes
                 # Per-word highlight only for short clips (avoids 4000+ events)
                 events = _build_highlight_events(line_words, style, total_offset_s)
                 subs.events.extend(events)
