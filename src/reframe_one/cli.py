@@ -40,6 +40,15 @@ def main():
     )
     p_gen.add_argument("--steps", help="Run only these steps (comma-separated: 1-6). Default: all")
 
+    # Clips from PDF
+    p_clips = sub.add_parser("clips-from-pdf", help="Generate clips.json from PDF suggestions")
+    p_clips.add_argument("--pdf", required=True, help="PDF with cut suggestions")
+    p_clips.add_argument("--transcript", required=True, help="Whisper JSON transcript")
+    p_clips.add_argument("--episode", required=True, help="Episode name to find in PDF")
+    p_clips.add_argument("--offset", type=float, default=0.0, help="Source in-point offset (s)")
+    p_clips.add_argument("-o", "--output", default="clips.json", help="Output clips JSON")
+    p_clips.add_argument("--use-llm", action="store_true", help="Use LLM for exact boundaries")
+
     args = parser.parse_args()
 
     if args.command == "scenes":
@@ -56,6 +65,9 @@ def main():
 
     elif args.command == "generate":
         _cmd_generate(args)
+
+    elif args.command == "clips-from-pdf":
+        _cmd_clips_from_pdf(args)
 
     else:
         parser.print_help()
@@ -105,19 +117,21 @@ def _cmd_generate(args):
     print(f"  🎬 Segments: {len(segments)} ({total_source_dur:.1f}s total)")
     print(f"  ⏱️  {_time.time() - t1:.1f}s")
 
-    # --- Clip filtering ---
+    # --- Clip selection ---
     if args.clips or args.clips_file:
-        from .clip_selector import load_clips_file, parse_time_ranges, select_by_time_ranges
+        from .clip_selector import load_clips_file, parse_time_ranges
 
         if args.clips_file:
             time_ranges = load_clips_file(args.clips_file)
-            print(f"\n  ✂️  Filtering by clips file: {args.clips_file}")
+            print(f"\n  ✂️  Loading clips from: {os.path.basename(args.clips_file)}")
         else:
             time_ranges = parse_time_ranges(args.clips)
-            print(f"\n  ✂️  Filtering by time ranges: {args.clips}")
-        segments = select_by_time_ranges(segments, time_ranges)
+            print(f"\n  ✂️  Using time ranges: {args.clips}")
+        # Replace segments with clip ranges
+        segments = [{"start": s, "end": e} for s, e in time_ranges]
         filtered_dur = sum(s["end"] - s["start"] for s in segments)
-        print(f"  → {len(segments)} clips selected ({filtered_dur:.1f}s)")
+        print(f"  → {len(segments)} clips ({filtered_dur:.0f}s total)")
+
     elif args.auto_select and args.transcript:
         from .clip_selector import select_by_llm
         from .llm import LLMConfig
@@ -262,6 +276,43 @@ def _cmd_generate(args):
     print(f"  Output: {output_path}")
     print("\n  → Open in Kdenlive to review and render")
     print()
+
+
+def _cmd_clips_from_pdf(args):
+    """Generate clips.json from PDF cut suggestions."""
+    from .llm import LLMConfig
+    from .pdf_parser import define_boundaries_with_llm, extract_episode_cuts, parse_pdf
+    from .subtitles import load_whisper_json
+
+    print(f"📄 Parsing PDF: {args.pdf}")
+    pdf_text = parse_pdf(args.pdf)
+
+    print(f"🔍 Extracting cuts for: {args.episode}")
+    cuts = extract_episode_cuts(pdf_text, args.episode)
+    if not cuts:
+        print(f"  ❌ No cuts found for episode '{args.episode}'")
+        sys.exit(1)
+    print(f"  Found {len(cuts)} cut suggestions")
+
+    print(f"📝 Loading transcript: {args.transcript}")
+    transcript_segs = load_whisper_json(args.transcript)
+
+    llm_config = LLMConfig() if args.use_llm else None
+    if llm_config:
+        print("🤖 Using LLM for exact boundaries...")
+    else:
+        print("📐 Using heuristic boundaries (add --use-llm for better results)")
+
+    clips = define_boundaries_with_llm(cuts, transcript_segs, args.offset, llm_config)
+
+    with open(args.output, "w", encoding="utf-8") as f:
+        json.dump(clips, f, indent=2, ensure_ascii=False)
+
+    total_dur = sum(c["end"] - c["start"] for c in clips)
+    print(f"\n✅ Generated {len(clips)} clips ({total_dur:.0f}s total) → {args.output}")
+    for i, c in enumerate(clips):
+        dur = c["end"] - c["start"]
+        print(f"  {i + 1:02d}. [{dur:3.0f}s] {c['title']}")
 
 
 def _load_cache(path: str) -> dict:
