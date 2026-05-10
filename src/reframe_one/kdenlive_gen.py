@@ -1,5 +1,6 @@
 """Generate Kdenlive project XML for vertical reframed clips."""
 
+import json
 import os
 import uuid
 import xml.etree.ElementTree as ET
@@ -566,9 +567,7 @@ def generate_vertical_project(
 
     # Subtitle properties
     if subtitle_path:
-        import json as _json
-
-        sub_list = _json.dumps([{"file": subtitle_path, "id": 0, "name": "Legendas"}], indent=4)
+        sub_list = json.dumps([{"file": subtitle_path, "id": 0, "name": "Legendas"}], indent=4)
         _prop(tractor4, "kdenlive:sequenceproperties.subtitlesList", sub_list + "\n")
         _prop(tractor4, "kdenlive:sequenceproperties.hidesubtitle", "0")
         _prop(tractor4, "kdenlive:sequenceproperties.globalSubtitleStyles", "[]\n")
@@ -612,7 +611,7 @@ def generate_vertical_project(
         _prop(f, "mlt_service", "avfilter.subtitles")
         _prop(f, "av.alpha", "1")
         _prop(f, "internal_added", "237")
-        _prop(f, "av.filename", os.path.basename(subtitle_path))
+        _prop(f, "av.filename", subtitle_path)
 
     # --- main_bin playlist ---
     main_bin = ET.SubElement(mlt, "playlist", id="main_bin")

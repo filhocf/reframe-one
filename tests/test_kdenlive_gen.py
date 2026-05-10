@@ -111,7 +111,7 @@ def test_subtitle_filter_added_when_path_provided():
     ]
     assert len(sub_filters) == 1
     filename_prop = sub_filters[0].find('property[@name="av.filename"]')
-    assert filename_prop.text == "test.ass"
+    assert filename_prop.text == "/tmp/test.ass"
 
 
 def test_no_subtitle_filter_when_path_empty():

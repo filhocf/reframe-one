@@ -94,6 +94,7 @@ def _cmd_generate(args):
     print(f"\r  Detected speaker in {speaker_count}/{total} segments     ")
 
     # Generate ASS if transcript provided
+    ass_output = ""
     if args.transcript:
         print("[5/6] Generating karaoke subtitles...")
         whisper_segs = load_whisper_json(args.transcript)
@@ -115,6 +116,7 @@ def _cmd_generate(args):
         segments=segments,
         camera_segments=camera_segments,
         output_path=output_path,
+        subtitle_path=ass_output,
     )
     print(f"  Output: {output_path}")
     print("Done!")
