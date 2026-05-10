@@ -1,6 +1,6 @@
 """Tests for scene_detect module."""
 
-from reframe_one.scene_detect import SceneChange, classify_cameras
+from reframe_one.scene_detect import SceneChange
 
 
 def test_classify_cameras_returns_segments():
