@@ -15,6 +15,43 @@ CAMERA_POSITIONS = {
 
 CLOSING_LENGTH_TC = "00:00:03.800"
 CLOSING_LENGTH_FRAMES = 115
+CLOSING_DURATION_S = 3.8
+GAP_BLANK_SECONDS = 5.0  # blank gap between consecutive clips
+FPS = 30  # matches MLT profile (30/1)
+
+
+def _build_guides(segments: list[dict]) -> list[dict]:
+    """Build timeline guides at clip boundaries, relative to generated timeline."""
+    guides = []
+    timeline_pos = 0.0
+
+    for i, seg in enumerate(segments):
+        clip_dur = seg["end"] - seg["start"]
+        guides.append(
+            {
+                "comment": f"Corte {i + 1} início",
+                "duration": 0,
+                "pos": int(timeline_pos * FPS),
+                "type": 0,
+            }
+        )
+        timeline_pos += clip_dur
+        guides.append(
+            {
+                "comment": f"Corte {i + 1} fim",
+                "duration": 0,
+                "pos": int(timeline_pos * FPS),
+                "type": 1,
+            }
+        )
+        # Account for closing + possible gap
+        timeline_pos += CLOSING_DURATION_S
+        if i < len(segments) - 1:
+            next_seg = segments[i + 1]
+            if next_seg["start"] - seg["end"] < GAP_BLANK_SECONDS:
+                timeline_pos += GAP_BLANK_SECONDS
+
+    return guides
 
 
 def _tc(seconds: float) -> str:
@@ -121,7 +158,7 @@ def _make_qtblend_filter(parent, filter_id, seg_start, seg_end, camera_segments,
 
 def _build_audio_playlist(playlist, segments, camera_segments, video_chain, closing_chain):
     """Build audio playlist mirroring video entries (same cuts as V1)."""
-    for seg in segments:
+    for seg_idx, seg in enumerate(segments):
         # Same camera segments as video
         seg_cameras = []
         for cs in camera_segments:
@@ -154,6 +191,12 @@ def _build_audio_playlist(playlist, segments, camera_segments, video_chain, clos
             **{"in": "00:00:00.000", "out": CLOSING_LENGTH_TC, "producer": closing_chain},
         )
         _prop(c_entry, "kdenlive:id", "5")
+
+        # Blank gap between consecutive clips
+        if seg_idx < len(segments) - 1:
+            next_seg = segments[seg_idx + 1]
+            if next_seg["start"] - seg["end"] < GAP_BLANK_SECONDS:
+                ET.SubElement(playlist, "blank", length=_tc(GAP_BLANK_SECONDS))
 
 
 def _build_video_playlist(
@@ -271,6 +314,12 @@ def _build_video_playlist(
         _prop(f, "kdenlive_id", "fade_to_black")
         _prop(f, "alpha", "0=1;-1=0")
 
+        # Blank gap between consecutive clips
+        if seg_idx < len(segments) - 1:
+            next_seg = segments[seg_idx + 1]
+            if next_seg["start"] - seg["end"] < GAP_BLANK_SECONDS:
+                ET.SubElement(playlist, "blank", length=_tc(GAP_BLANK_SECONDS))
+
 
 def generate_vertical_project(
     video_path: str,
@@ -306,7 +355,17 @@ def generate_vertical_project(
     video_length_tc = _tc(last_seg["end"] + 0.033)
 
     # Total timeline duration estimate
-    total_dur = sum(s["end"] - s["start"] for s in segments) + 3.8 * len(segments)
+    # Calculate total duration including closings and gaps
+    gap_count = sum(
+        1
+        for i in range(len(segments) - 1)
+        if segments[i + 1]["start"] - segments[i]["end"] < GAP_BLANK_SECONDS
+    )
+    total_dur = (
+        sum(s["end"] - s["start"] for s in segments)
+        + CLOSING_DURATION_S * len(segments)
+        + GAP_BLANK_SECONDS * gap_count
+    )
     total_out_tc = _tc(total_dur)
 
     # --- Build MLT root ---
@@ -582,6 +641,19 @@ def generate_vertical_project(
         _prop(tractor4, "kdenlive:sequenceproperties.subtitlesList", sub_list + "\n")
         _prop(tractor4, "kdenlive:sequenceproperties.hidesubtitle", "0")
         _prop(tractor4, "kdenlive:sequenceproperties.globalSubtitleStyles", "[]\n")
+
+    # Timeline guides (mark clip start/end)
+    guides = _build_guides(segments)
+    if guides:
+        categories = json.dumps(
+            [
+                {"color": "#27ae60", "comment": "Início corte", "index": 0},
+                {"color": "#e74c3c", "comment": "Fim corte", "index": 1},
+            ],
+            indent=4,
+        )
+        _prop(tractor4, "kdenlive:sequenceproperties.guides", json.dumps(guides, indent=4) + "\n")
+        _prop(tractor4, "kdenlive:docproperties.guidesCategories", categories + "\n")
 
     ET.SubElement(tractor4, "track", producer="producer0")
     ET.SubElement(tractor4, "track", producer="tractor0")
