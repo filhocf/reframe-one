@@ -73,3 +73,77 @@ def test_consistent_uuids():
             uuids.add(uuid_prop.text)
 
     assert len(uuids) == 1, f"Expected 1 UUID for video chains, got {len(uuids)}: {uuids}"
+
+
+def test_subtitle_filter_added_when_path_provided():
+    """When subtitle_path is given, avfilter.subtitles should be in tractor."""
+    import tempfile
+    import xml.etree.ElementTree as ET
+
+    from reframe_one.kdenlive_gen import generate_vertical_project
+
+    segments = [{"start": 0.0, "end": 5.0}]
+    cameras = [{"start": 0.0, "end": 5.0, "camera": "central"}]
+
+    with (
+        tempfile.NamedTemporaryFile(suffix=".mp4") as vid,
+        tempfile.NamedTemporaryFile(suffix=".mp4") as closing,
+        tempfile.NamedTemporaryFile(suffix=".kdenlive", delete=False) as out,
+    ):
+        generate_vertical_project(
+            vid.name,
+            closing.name,
+            segments,
+            cameras,
+            out.name,
+            subtitle_path="/tmp/test.ass",
+        )
+        tree = ET.parse(out.name)
+
+    root = tree.getroot()
+    # Find avfilter.subtitles
+    filters = root.findall(".//filter")
+    sub_filters = [
+        f
+        for f in filters
+        if f.find('property[@name="mlt_service"]') is not None
+        and f.find('property[@name="mlt_service"]').text == "avfilter.subtitles"
+    ]
+    assert len(sub_filters) == 1
+    filename_prop = sub_filters[0].find('property[@name="av.filename"]')
+    assert filename_prop.text == "/tmp/test.ass"
+
+
+def test_no_subtitle_filter_when_path_empty():
+    """When subtitle_path is empty, no subtitle filter should exist."""
+    import tempfile
+    import xml.etree.ElementTree as ET
+
+    from reframe_one.kdenlive_gen import generate_vertical_project
+
+    segments = [{"start": 0.0, "end": 5.0}]
+    cameras = [{"start": 0.0, "end": 5.0, "camera": "central"}]
+
+    with (
+        tempfile.NamedTemporaryFile(suffix=".mp4") as vid,
+        tempfile.NamedTemporaryFile(suffix=".mp4") as closing,
+        tempfile.NamedTemporaryFile(suffix=".kdenlive", delete=False) as out,
+    ):
+        generate_vertical_project(
+            vid.name,
+            closing.name,
+            segments,
+            cameras,
+            out.name,
+        )
+        tree = ET.parse(out.name)
+
+    root = tree.getroot()
+    filters = root.findall(".//filter")
+    sub_filters = [
+        f
+        for f in filters
+        if f.find('property[@name="mlt_service"]') is not None
+        and f.find('property[@name="mlt_service"]').text == "avfilter.subtitles"
+    ]
+    assert len(sub_filters) == 0

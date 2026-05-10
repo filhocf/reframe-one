@@ -1,5 +1,6 @@
 """Generate Kdenlive project XML for vertical reframed clips."""
 
+import json
 import os
 import uuid
 import xml.etree.ElementTree as ET
@@ -273,6 +274,7 @@ def generate_vertical_project(
     segments: list[dict],
     camera_segments: list[dict],
     output_path: str,
+    subtitle_path: str = "",
 ):
     """Generate a complete Kdenlive .kdenlive project for vertical cuts.
 
@@ -282,6 +284,7 @@ def generate_vertical_project(
         segments: list of {start: float, end: float} in seconds
         camera_segments: list of {start: float, end: float, camera: str}
         output_path: where to save the .kdenlive file
+        subtitle_path: optional path to .ass subtitle file to embed
     """
     root_dir = os.path.dirname(video_path)
     video_basename = os.path.basename(video_path)
@@ -562,6 +565,13 @@ def generate_vertical_project(
     _prop(tractor4, "kdenlive:sequenceproperties.tracksCount", "4")
     _prop(tractor4, "kdenlive:sequenceproperties.videoTarget", "2")
 
+    # Subtitle properties
+    if subtitle_path:
+        sub_list = json.dumps([{"file": subtitle_path, "id": 0, "name": "Legendas"}], indent=4)
+        _prop(tractor4, "kdenlive:sequenceproperties.subtitlesList", sub_list + "\n")
+        _prop(tractor4, "kdenlive:sequenceproperties.hidesubtitle", "0")
+        _prop(tractor4, "kdenlive:sequenceproperties.globalSubtitleStyles", "[]\n")
+
     ET.SubElement(tractor4, "track", producer="producer0")
     ET.SubElement(tractor4, "track", producer="tractor0")
     ET.SubElement(tractor4, "track", producer="tractor1")
@@ -593,6 +603,15 @@ def generate_vertical_project(
     _prop(f, "internal_added", "237")
     _prop(f, "start", "0.5")
     _prop(f, "disable", "1")
+
+    # Subtitle filter
+    if subtitle_path:
+        f = ET.SubElement(tractor4, "filter", id=f"filter{filter_counter[0]}")
+        filter_counter[0] += 1
+        _prop(f, "mlt_service", "avfilter.subtitles")
+        _prop(f, "av.alpha", "1")
+        _prop(f, "internal_added", "237")
+        _prop(f, "av.filename", subtitle_path)
 
     # --- main_bin playlist ---
     main_bin = ET.SubElement(mlt, "playlist", id="main_bin")
