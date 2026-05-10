@@ -33,6 +33,7 @@ def main():
     p_gen.add_argument("--transcript", help="Whisper JSON transcript (optional)")
     p_gen.add_argument("--closing", default=CLOSING_PATH, help="Closing video path")
     p_gen.add_argument("--threshold", type=float, default=0.3, help="Scene detection threshold")
+    p_gen.add_argument("--config", help="Episode config file (JSON/YAML)")
     p_gen.add_argument("--clips", help="Time ranges to include (e.g. '0:30-1:45,3:00-4:20')")
     p_gen.add_argument("--clips-file", help="JSON file with clip selections")
     p_gen.add_argument(
@@ -63,6 +64,9 @@ def main():
 
 def _cmd_generate(args):
     """Generate vertical .kdenlive project."""
+    from .config import load_config
+
+    ep_config = load_config(args.config)
     input_path = args.input
     print(f"[1/5] Parsing project: {input_path}")
     project = parse_project(input_path)
@@ -137,11 +141,12 @@ def _cmd_generate(args):
     print("[6/6] Generating vertical project...")
     generate_vertical_project(
         video_path=video_path,
-        closing_path=args.closing,
+        closing_path=ep_config.closing if not args.closing else args.closing,
         segments=segments,
         camera_segments=camera_segments,
         output_path=output_path,
         subtitle_path=ass_output,
+        camera_positions=ep_config.cameras,
     )
     print(f"  Output: {output_path}")
     print("Done!")

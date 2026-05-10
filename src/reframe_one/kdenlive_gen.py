@@ -275,6 +275,7 @@ def generate_vertical_project(
     camera_segments: list[dict],
     output_path: str,
     subtitle_path: str = "",
+    camera_positions: dict | None = None,
 ):
     """Generate a complete Kdenlive .kdenlive project for vertical cuts.
 
@@ -285,7 +286,14 @@ def generate_vertical_project(
         camera_segments: list of {start: float, end: float, camera: str}
         output_path: where to save the .kdenlive file
         subtitle_path: optional path to .ass subtitle file to embed
+        camera_positions: optional dict of camera name → (x, y, w, h) overrides
     """
+    # Apply camera position overrides
+    global CAMERA_POSITIONS
+    original_positions = CAMERA_POSITIONS
+    if camera_positions:
+        CAMERA_POSITIONS = {**CAMERA_POSITIONS, **camera_positions}
+
     root_dir = os.path.dirname(video_path)
     video_basename = os.path.basename(video_path)
     seq_uuid = "{" + str(uuid.uuid4()) + "}"
@@ -649,4 +657,8 @@ def generate_vertical_project(
     tree = ET.ElementTree(mlt)
     ET.indent(tree, space=" ")
     tree.write(output_path, encoding="utf-8", xml_declaration=True)
+
+    # Restore original camera positions
+    CAMERA_POSITIONS = original_positions
+
     print(f"Generated: {output_path}")
