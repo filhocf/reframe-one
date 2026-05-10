@@ -53,7 +53,7 @@ def detect_scenes(video_path: str, threshold: float = 0.3) -> list[SceneChange]:
     return scenes
 
 
-def classify_cameras(video_path: str, scenes: list[SceneChange]) -> list[dict]:
+def classify_cameras(video_path: str, scenes: list[SceneChange], progress_cb=None) -> list[dict]:
     """Classify each segment between scene changes by camera type.
 
     Uses face count heuristic:
@@ -61,11 +61,16 @@ def classify_cameras(video_path: str, scenes: list[SceneChange]) -> list[dict]:
     - 2 faces → entrevistadores (interviewers)
     - 1 face → entrevistada (guest)
     - 0 faces → central (fallback)
+
+    Args:
+        progress_cb: optional callback(current, total) for progress display
     """
     net = _get_face_net()
     segments = []
 
     for i, scene in enumerate(scenes):
+        if progress_cb:
+            progress_cb(i + 1, len(scenes))
         start = scene.timestamp
         end = scenes[i + 1].timestamp if i + 1 < len(scenes) else None
         mid = start + ((end - start) / 2) if end else start + 1.0
