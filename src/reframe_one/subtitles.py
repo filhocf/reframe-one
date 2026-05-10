@@ -60,11 +60,11 @@ STYLE_PRESETS: dict[str, SubtitleStyle] = {
         name="papo-saude",
         font="Arial",
         fontsize=80,
-        active_color="&H00FFFFFF",  # White (spoken word)
-        inactive_color="&H00BBBBBB",  # Gray (not yet spoken)
-        outline_color="&H005FA985",  # #85a95f in BGR = 5FA985
-        back_color="&H005FA985",  # Green background on active word
-        outline=6.0,
+        active_color="&H005FA985",  # Green #85a95f (primary = after highlight)
+        inactive_color="&H00BBBBBB",  # Gray (secondary = before highlight)
+        outline_color="&H00000000",  # Black outline
+        back_color="&H00000000",
+        outline=4.0,
         margin_v=300,
         alignment=2,
         bold=True,
@@ -272,8 +272,8 @@ def generate_ass(
 
         # Generate events per line
         for line_words in lines:
-            if style.name == "papo-saude":
-                # Per-word highlight with background box
+            if style.name == "papo-saude" and len(segments) < 50:
+                # Per-word highlight only for short clips (avoids 4000+ events)
                 events = _build_highlight_events(line_words, style, total_offset_s)
                 subs.events.extend(events)
             else:
@@ -291,44 +291,52 @@ def generate_ass(
 
 
 def _build_karaoke(words: list[dict], style: SubtitleStyle) -> str:
-    """Build karaoke text with \\k tags for word-by-word highlight."""
+    """Build karaoke text with \\k or \\kf tags for word-by-word highlight."""
+    tag = "kf" if style.name in ("papo-saude", "word-pop") else "k"
     parts = []
     for word in words:
         duration_cs = max(1, int((word["end"] - word["start"]) * 100))
-        parts.append(f"{{\\k{duration_cs}}}{word['word']}")
+        parts.append(f"{{\\{tag}{duration_cs}}}{word['word']}")
     return "".join(parts).strip()
 
 
 def _build_highlight_events(words: list[dict], style: SubtitleStyle, offset_s: float) -> list:
-    """Build per-word events with background highlight on active word.
+    """Build per-word highlight: gray→white transition + active word with background.
 
-    Each word gets its own event. The active word has colored background,
-    others are gray. Uses BorderStyle=3 for opaque box.
+    Each word-moment = one event showing the full line (no gaps = no flicker).
+    Words before active = white (already spoken).
+    Active word = white + colored background box.
+    Words after active = gray (not yet spoken).
     """
     import pysubs2
 
     events = []
     for i, word in enumerate(words):
-        start_ms = int((word["start"] - offset_s) * 1000)
-        end_ms = int((word["end"] - offset_s) * 1000)
+        # Event spans from this word's start to next word's start (seamless)
+        evt_start = int((word["start"] - offset_s) * 1000)
+        if i + 1 < len(words):
+            evt_end = int((words[i + 1]["start"] - offset_s) * 1000)
+        else:
+            evt_end = int((word["end"] - offset_s) * 1000)
 
-        # Build line: all words visible, active one highlighted
+        if evt_end <= evt_start:
+            evt_end = evt_start + 33
+
+        # Build full line with positional coloring
         parts = []
         for j, w in enumerate(words):
-            if j == i:
-                # Active word: white text + green background box
-                parts.append(
-                    f"{{\\1c&H00FFFFFF&\\3c{style.outline_color}\\4c{style.back_color}"
-                    f"\\bord8\\shad0}}{w['word']}"
-                )
+            if j < i:
+                # Already spoken: white, no box
+                parts.append(f"{{\\1c&H00FFFFFF&\\3c&H00000000&\\bord0}}{w['word']}")
+            elif j == i:
+                # Active: white + green background box
+                parts.append(f"{{\\1c&H00FFFFFF&\\3c{style.outline_color}\\bord8}}{w['word']}")
             else:
-                # Inactive: gray text, no box
-                parts.append(
-                    f"{{\\1c{style.inactive_color}\\3c&H00000000&\\bord0\\shad0}}{w['word']}"
-                )
+                # Not yet spoken: gray, no box
+                parts.append(f"{{\\1c{style.inactive_color}\\3c&H00000000&\\bord0}}{w['word']}")
 
         text = "".join(parts).strip()
-        events.append(pysubs2.SSAEvent(start=start_ms, end=end_ms, text=text))
+        events.append(pysubs2.SSAEvent(start=evt_start, end=evt_end, text=text))
 
     return events
 
