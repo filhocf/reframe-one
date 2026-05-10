@@ -9,6 +9,7 @@ dependencies = [
     "mediapipe>=0.10",
     "pysubs2>=1.7",
     "numpy>=2.0",
+    "httpx>=0.27",
 ]
 
 [project.optional-dependencies]
