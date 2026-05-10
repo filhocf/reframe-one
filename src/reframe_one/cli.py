@@ -33,6 +33,11 @@ def main():
     p_gen.add_argument("--transcript", help="Whisper JSON transcript (optional)")
     p_gen.add_argument("--closing", default=CLOSING_PATH, help="Closing video path")
     p_gen.add_argument("--threshold", type=float, default=0.3, help="Scene detection threshold")
+    p_gen.add_argument("--clips", help="Time ranges to include (e.g. '0:30-1:45,3:00-4:20')")
+    p_gen.add_argument("--clips-file", help="JSON file with clip selections")
+    p_gen.add_argument(
+        "--auto-select", action="store_true", help="Use LLM to score and select clips"
+    )
 
     args = parser.parse_args()
 
@@ -69,6 +74,26 @@ def _cmd_generate(args):
 
     segments = [{"start": s.in_seconds, "end": s.out_seconds} for s in project.segments]
     print(f"  Found {len(segments)} segments in source project")
+
+    # Filter clips if specified
+    if args.clips or args.clips_file:
+        from .clip_selector import load_clips_file, parse_time_ranges, select_by_time_ranges
+
+        if args.clips_file:
+            time_ranges = load_clips_file(args.clips_file)
+        else:
+            time_ranges = parse_time_ranges(args.clips)
+        segments = select_by_time_ranges(segments, time_ranges)
+        print(f"  Filtered to {len(segments)} clips")
+    elif args.auto_select and args.transcript:
+        from .clip_selector import select_by_llm
+        from .llm import LLMConfig
+        from .subtitles import load_whisper_json as _load_wj
+
+        print("  Auto-selecting clips via LLM...")
+        transcript_segs = _load_wj(args.transcript)
+        segments = select_by_llm(segments, transcript_segs, LLMConfig())
+        print(f"  Selected {len(segments)} clips")
 
     print(f"[2/5] Detecting scenes in: {os.path.basename(video_path)}")
     scenes = detect_scenes(video_path, args.threshold)
