@@ -8,7 +8,7 @@ import sys
 from .kdenlive_gen import generate_vertical_project
 from .parse_kdenlive import parse_project
 from .scene_detect import classify_cameras, detect_scenes, save_scenes
-from .subtitles import generate_karaoke_ass, load_whisper_json
+from .subtitles import generate_ass, load_whisper_json
 
 
 def main():
@@ -51,7 +51,7 @@ def main():
     elif args.command == "subtitles":
         print(f"Generating karaoke ASS from {args.transcript}...")
         segments = load_whisper_json(args.transcript)
-        generate_karaoke_ass(segments, args.output)
+        generate_ass(segments, args.output)
         print(f"Generated {args.output}")
 
     elif args.command == "generate":
@@ -134,6 +134,12 @@ def _cmd_generate(args):
     if 2 in run_steps:
         print(f"\n[2/6] Detecting scenes (threshold={args.threshold})...")
         scenes = detect_scenes(video_path, args.threshold)
+        # Ensure first segment starts at source in-point (not first scene change)
+        seg_start = segments[0]["start"]
+        if not scenes or scenes[0].timestamp > seg_start + 0.5:
+            from .scene_detect import SceneChange as _SC
+
+            scenes.insert(0, _SC(timestamp=seg_start, score=0.0))
         print(f"  🎞️  {len(scenes)} scene changes detected")
         print(f"  ⏱️  {_time.time() - t2:.1f}s")
     else:
@@ -142,6 +148,10 @@ def _cmd_generate(args):
         from .scene_detect import SceneChange
 
         scenes = [SceneChange(timestamp=s["timestamp"], score=s["score"]) for s in scenes_data]
+        # Ensure first segment starts at source in-point
+        seg_start = segments[0]["start"]
+        if not scenes or scenes[0].timestamp > seg_start + 0.5:
+            scenes.insert(0, SceneChange(timestamp=seg_start, score=0.0))
         print(f"\n[2/6] Loaded {len(scenes)} scenes from cache")
 
     # --- Step 3: Camera classification ---
@@ -205,7 +215,14 @@ def _cmd_generate(args):
         whisper_segs = load_whisper_json(args.transcript)
         base = os.path.splitext(input_path)[0]
         ass_output = base + "-cortes.ass"
-        generate_karaoke_ass(whisper_segs, ass_output)
+        generate_ass(
+            whisper_segs,
+            ass_output,
+            style=ep_config.subtitle_style,
+            max_chars=ep_config.max_chars,
+            offset_s=segments[0]["start"],
+            sync_offset_ms=ep_config.sync_offset_ms,
+        )
         print(f"  📝 {ass_output}")
         print(f"  ⏱️  {_time.time() - t5:.1f}s")
     else:
@@ -215,6 +232,11 @@ def _cmd_generate(args):
     t6 = _time.time()
     base = os.path.splitext(input_path)[0]
     output_path = base + "-cortes.kdenlive"
+    # ASS uses Kdenlive convention: {project}.kdenlive.ass
+    if ass_output:
+        ass_final = output_path + ".ass"
+        os.replace(ass_output, ass_final)
+        ass_output = ass_final
     print("\n[6/6] Generating vertical project...")
     generate_vertical_project(
         video_path=video_path,

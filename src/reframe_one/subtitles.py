@@ -56,6 +56,19 @@ STYLE_PRESETS: dict[str, SubtitleStyle] = {
         alignment=5,  # center screen
         bold=True,
     ),
+    "papo-saude": SubtitleStyle(
+        name="papo-saude",
+        font="Arial",
+        fontsize=80,
+        active_color="&H00FFFFFF",  # White (spoken word)
+        inactive_color="&H00BBBBBB",  # Gray (not yet spoken)
+        outline_color="&H005FA985",  # #85a95f in BGR = 5FA985
+        back_color="&H005FA985",  # Green background on active word
+        outline=6.0,
+        margin_v=300,
+        alignment=2,
+        bold=True,
+    ),
 }
 
 
@@ -202,6 +215,8 @@ def generate_ass(
     style: SubtitleStyle | str = "karaoke",
     max_chars: int = 50,
     llm_config: LLMConfig | None = None,
+    offset_s: float = 0.0,
+    sync_offset_ms: int = 0,
 ):
     """Generate ASS file with configurable style and optional LLM cleanup.
 
@@ -211,7 +226,11 @@ def generate_ass(
         style: Style preset name or SubtitleStyle instance.
         max_chars: Max characters per subtitle line.
         llm_config: LLM config for text cleanup (None = local-only cleanup).
+        offset_s: Subtract this from all timestamps (align to timeline start).
+        sync_offset_ms: Fine-tune sync in milliseconds (negative = show earlier).
     """
+    # Combine offsets
+    total_offset_s = offset_s - (sync_offset_ms / 1000.0)
     if isinstance(style, str):
         style = STYLE_PRESETS.get(style, STYLE_PRESETS["karaoke"])
 
@@ -239,8 +258,8 @@ def generate_ass(
     for seg, cleaned_words in zip(segments, cleaned_segments):
         words = seg.get("words", [])
         if not words:
-            start_ms = int(seg["start"] * 1000)
-            end_ms = int(seg["end"] * 1000)
+            start_ms = int((seg["start"] - total_offset_s) * 1000)
+            end_ms = int((seg["end"] - total_offset_s) * 1000)
             event = pysubs2.SSAEvent(start=start_ms, end=end_ms, text=seg["text"].strip())
             subs.events.append(event)
             continue
@@ -253,15 +272,20 @@ def generate_ass(
 
         # Generate events per line
         for line_words in lines:
-            start_ms = int(line_words[0]["start"] * 1000)
-            end_ms = int(line_words[-1]["end"] * 1000)
-
-            if style.name == "word-pop":
-                text = _build_word_pop(line_words)
+            if style.name == "papo-saude":
+                # Per-word highlight with background box
+                events = _build_highlight_events(line_words, style, total_offset_s)
+                subs.events.extend(events)
             else:
-                text = _build_karaoke(line_words, style)
+                start_ms = int((line_words[0]["start"] - total_offset_s) * 1000)
+                end_ms = int((line_words[-1]["end"] - total_offset_s) * 1000)
 
-            subs.events.append(pysubs2.SSAEvent(start=start_ms, end=end_ms, text=text))
+                if style.name == "word-pop":
+                    text = _build_word_pop(line_words)
+                else:
+                    text = _build_karaoke(line_words, style)
+
+                subs.events.append(pysubs2.SSAEvent(start=start_ms, end=end_ms, text=text))
 
     subs.save(output_path)
 
@@ -273,6 +297,40 @@ def _build_karaoke(words: list[dict], style: SubtitleStyle) -> str:
         duration_cs = max(1, int((word["end"] - word["start"]) * 100))
         parts.append(f"{{\\k{duration_cs}}}{word['word']}")
     return "".join(parts).strip()
+
+
+def _build_highlight_events(words: list[dict], style: SubtitleStyle, offset_s: float) -> list:
+    """Build per-word events with background highlight on active word.
+
+    Each word gets its own event. The active word has colored background,
+    others are gray. Uses BorderStyle=3 for opaque box.
+    """
+    import pysubs2
+
+    events = []
+    for i, word in enumerate(words):
+        start_ms = int((word["start"] - offset_s) * 1000)
+        end_ms = int((word["end"] - offset_s) * 1000)
+
+        # Build line: all words visible, active one highlighted
+        parts = []
+        for j, w in enumerate(words):
+            if j == i:
+                # Active word: white text + green background box
+                parts.append(
+                    f"{{\\1c&H00FFFFFF&\\3c{style.outline_color}\\4c{style.back_color}"
+                    f"\\bord8\\shad0}}{w['word']}"
+                )
+            else:
+                # Inactive: gray text, no box
+                parts.append(
+                    f"{{\\1c{style.inactive_color}\\3c&H00000000&\\bord0\\shad0}}{w['word']}"
+                )
+
+        text = "".join(parts).strip()
+        events.append(pysubs2.SSAEvent(start=start_ms, end=end_ms, text=text))
+
+    return events
 
 
 def _build_word_pop(words: list[dict]) -> str:

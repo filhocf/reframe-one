@@ -2,78 +2,85 @@
 
 ## Stack
 
-- Python 3.13
+- Python 3.12+
 - FFmpeg (scene detection, frame extraction)
 - OpenCV (face detection via DNN — res10 caffe model)
+- MediaPipe (speaker detection via lip movement)
 - pysubs2 (geração de legendas ASS)
+- httpx (chamadas LLM)
 - xml.etree.ElementTree (geração de XML Kdenlive/MLT)
 
 ## Componentes
 
 ```
 reframe-one/src/reframe_one/
-├── cli.py              # Entry point — orquestra o pipeline
-├── parse_kdenlive.py   # Lê .kdenlive, extrai vídeo bruto + segmentos + guides
-├── scene_detect.py     # ffmpeg scene detect + classificação de câmera (face count)
-├── subtitles.py        # Whisper JSON → ASS karaoke (word-highlight)
-└── kdenlive_gen.py     # Gera XML .kdenlive vertical com qtblend keyframes
+├── cli.py              # Entry point — orquestra pipeline, --steps, cache
+├── config.py           # EpisodeConfig dataclass + JSON/YAML loader
+├── parse_kdenlive.py   # Lê .kdenlive, extrai vídeo bruto + segmentos
+├── scene_detect.py     # ffmpeg scene detect + classificação de câmera
+├── speaker_detect.py   # MediaPipe FaceLandmarker lip movement analysis
+├── clip_selector.py    # Seleção de clips (manual time ranges + LLM scoring)
+├── subtitles.py        # Whisper JSON → ASS (4 estilos + cleanup + line break)
+├── llm.py              # Interface LLM configurável (ollama/groq/openai)
+└── kdenlive_gen.py     # Gera XML .kdenlive vertical com pan + guides + gap
 ```
 
 ## Fluxo de Dados
 
 ```
-nome.kdenlive (input)
+nome.kdenlive (input) + transcricao.json + episode.json (config)
     │
-    ├── parse_kdenlive.py → ProjectInfo (video_path, segments, guides)
+    ├─[1] parse_kdenlive.py → ProjectInfo (video_path, segments)
     │
-    ├── scene_detect.py
-    │   ├── detect_scenes(video) → [SceneChange(timestamp, score)]
-    │   └── classify_cameras(video, scenes) → [{start, end, camera, face_count}]
+    ├─[2] scene_detect.py → [SceneChange(timestamp, score)]
     │
-    ├── subtitles.py
-    │   └── generate_karaoke_ass(whisper_json) → .ass
+    ├─[3] scene_detect.classify_cameras() → [{start, end, camera}]
     │
-    └── kdenlive_gen.py
-        └── generate_vertical_project(video, closing, segments, cameras) → .kdenlive
+    ├─[4] speaker_detect.py → pan_x por segmento (lip movement)
+    │
+    ├─[5] clip_selector.py → filtra segmentos (manual ou LLM)
+    │     subtitles.py → .ass (estilo configurável + cleanup)
+    │
+    └─[6] kdenlive_gen.py → .kdenlive vertical (pan + subs + guides + gap)
 
-nome-cortes.kdenlive (output)
+Cache: nome-cache.json (scenes + camera_segments + speaker data)
 ```
+
+## Estilos de Legenda
+
+| Estilo | Técnica | Visual |
+|--------|---------|--------|
+| karaoke | `\k` tags | Amarelo ativo, branco inativo |
+| hormozi | `\k` tags | Cinza→branco, Montserrat Bold |
+| word-pop | `\kf` tags | Fill progressivo, centro da tela |
+| papo-saude | Per-word events | Cinza inativo, branco + fundo verde #85a95f ativo |
 
 ## Modelo de Câmeras
 
-Vídeo bruto 1920×1080 com 3 ângulos (cortes no próprio vídeo):
-- **Central**: todos os participantes visíveis
-- **Entrevistadores**: enquadra quem pergunta (lado esquerdo)
-- **Entrevistada**: enquadra a convidada (lado direito)
-
-Classificação por face count no frame:
-- 3+ faces → central
-- 2 faces → entrevistadores
-- 1 face → entrevistada
+Classificação por face count:
+- 3+ faces → central (todos)
+- 2 faces → entrevistadores (esquerda)
+- 1 face → entrevistada (direita)
 - 0 faces → fallback entrevistadores
 
-## Reframe Vertical
-
-Canvas: 1080×1920. Vídeo escalado 320% (3456×6144). Pan via qtblend rect:
+Posições (configuráveis via episode.json):
 
 | Câmera | X | Y | W | H |
 |--------|---|---|---|---|
-| central | 0 | 0 | 1080 | 1920 |
+| central | -1200 | -2112 | 3456 | 6144 |
 | entrevistadores | -1400 | -2112 | 3456 | 6144 |
 | entrevistada | -1900 | -2112 | 3456 | 6144 |
 
-## Formato XML de Saída
+## Cache e Steps
 
-MLT 7.38.0 compatível com Kdenlive 25.12+:
-- Profile vertical 1080×1920 30fps
-- Chains com kdenlive:id + kdenlive:control_uuid consistentes
-- Playlists de áudio (A1, A2) e vídeo (V1)
-- Filtros qtblend com múltiplos keyframes (semicolon-separated rect)
-- Fechamento Instagram entre segmentos
-- Fades from/to black nas transições
+Pipeline completo: ~7min (scene detect + classify + speaker detect).
+Com `--steps 1,5,6`: ~0.1s (usa cache para steps 2-4).
+
+Cache salvo em `{base}-cache.json` após steps 2-4.
 
 ## Dependências Externas
 
-- Modelo face detection: `res10_300x300_ssd_iter_140000.caffemodel` (OpenCV samples)
-- Fechamento Instagram: `00 Comum/fechamento papo podcast Insta.mp4`
-- Abertura YouTube: `00 Comum/abertura papo podcast YT.mp4` (removida nos cortes)
+- Modelo face detection: `res10_300x300_ssd_iter_140000.caffemodel`
+- Modelo lip detection: `~/.mediapipe/face_landmarker.task` (3.6MB)
+- Fechamento Instagram: configurável via episode.json (default: `00 Comum/fechamento papo podcast Insta.mp4`)
+- LLM (opcional): Ollama local, Groq, ou OpenAI

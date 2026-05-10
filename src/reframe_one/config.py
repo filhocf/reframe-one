@@ -26,6 +26,7 @@ class EpisodeConfig:
     subtitle_style: str = "karaoke"
     scene_threshold: float = 0.3
     max_chars: int = 50
+    sync_offset_ms: int = -50  # fine-tune subtitle sync (negative = earlier)
 
 
 def load_config(path: str | None) -> EpisodeConfig:
@@ -73,5 +74,8 @@ def _parse_config(data: dict) -> EpisodeConfig:
 
     if "max_chars" in data:
         config.max_chars = int(data["max_chars"])
+
+    if "sync_offset_ms" in data:
+        config.sync_offset_ms = int(data["sync_offset_ms"])
 
     return config
