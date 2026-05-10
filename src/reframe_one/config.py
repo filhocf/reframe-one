@@ -12,7 +12,7 @@ DEFAULT_CAMERAS = {
     "unknown": (-1400, -2112, 3456, 6144),
 }
 
-DEFAULT_CLOSING = ""
+DEFAULT_CLOSING = "/home/claudio/Insync/ssd/papo-saude/00 Comum/fechamento papo podcast Insta.mp4"
 
 
 @dataclass
