@@ -33,11 +33,12 @@
 - Primeiro entry começava em 19.5s (faltava scene artificial no in-point)
 - Estilo karaoke simples não faz highlight de fundo por palavra
 
-### Próximo
-- Commitar fixes pendentes + PR
-- Testar visualmente no Kdenlive (estilo papo-saude com fundo verde)
-- Ajustar sync_offset_ms se necessário (-50 pode não ser suficiente)
-- Verificar posições de câmera (X=0 para entrevistadora à esquerda)
+### Próximo (próximo fim de semana)
+- Issue #18: aplicar pan_x do speaker detect nos entries do kdenlive_gen
+- Posições corretas ep 04: entrevistadora X=0, entrevistada X=-2376
+- Testar ep 04 completo (16 cortes) com pan_x
+- Renderizar cortes finais
+- Testar com ep 06 (Larissa) — tem PDF próprio de cortes
 
 ## Sessão 09/mai/2026 (sirdata)
 
