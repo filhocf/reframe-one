@@ -15,30 +15,42 @@ CAMERA_POSITIONS = {
 
 CLOSING_LENGTH_TC = "00:00:03.800"
 CLOSING_LENGTH_FRAMES = 115
+CLOSING_DURATION_S = 3.8
 GAP_BLANK_SECONDS = 5.0  # blank gap between consecutive clips
-FPS = 29.97
+FPS = 30  # matches MLT profile (30/1)
 
 
 def _build_guides(segments: list[dict]) -> list[dict]:
-    """Build timeline guides marking start/end of each clip."""
+    """Build timeline guides at clip boundaries, relative to generated timeline."""
     guides = []
+    timeline_pos = 0.0
+
     for i, seg in enumerate(segments):
+        clip_dur = seg["end"] - seg["start"]
         guides.append(
             {
                 "comment": f"Corte {i + 1} início",
                 "duration": 0,
-                "pos": int(seg["start"] * FPS),
+                "pos": int(timeline_pos * FPS),
                 "type": 0,
             }
         )
+        timeline_pos += clip_dur
         guides.append(
             {
                 "comment": f"Corte {i + 1} fim",
                 "duration": 0,
-                "pos": int(seg["end"] * FPS),
+                "pos": int(timeline_pos * FPS),
                 "type": 1,
             }
         )
+        # Account for closing + possible gap
+        timeline_pos += CLOSING_DURATION_S
+        if i < len(segments) - 1:
+            next_seg = segments[i + 1]
+            if next_seg["start"] - seg["end"] < GAP_BLANK_SECONDS:
+                timeline_pos += GAP_BLANK_SECONDS
+
     return guides
 
 
@@ -343,7 +355,17 @@ def generate_vertical_project(
     video_length_tc = _tc(last_seg["end"] + 0.033)
 
     # Total timeline duration estimate
-    total_dur = sum(s["end"] - s["start"] for s in segments) + 3.8 * len(segments)
+    # Calculate total duration including closings and gaps
+    gap_count = sum(
+        1
+        for i in range(len(segments) - 1)
+        if segments[i + 1]["start"] - segments[i]["end"] < GAP_BLANK_SECONDS
+    )
+    total_dur = (
+        sum(s["end"] - s["start"] for s in segments)
+        + CLOSING_DURATION_S * len(segments)
+        + GAP_BLANK_SECONDS * gap_count
+    )
     total_out_tc = _tc(total_dur)
 
     # --- Build MLT root ---
