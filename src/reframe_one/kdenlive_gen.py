@@ -15,6 +15,31 @@ CAMERA_POSITIONS = {
 
 CLOSING_LENGTH_TC = "00:00:03.800"
 CLOSING_LENGTH_FRAMES = 115
+GAP_BLANK_SECONDS = 5.0  # blank gap between consecutive clips
+FPS = 29.97
+
+
+def _build_guides(segments: list[dict]) -> list[dict]:
+    """Build timeline guides marking start/end of each clip."""
+    guides = []
+    for i, seg in enumerate(segments):
+        guides.append(
+            {
+                "comment": f"Corte {i + 1} início",
+                "duration": 0,
+                "pos": int(seg["start"] * FPS),
+                "type": 0,
+            }
+        )
+        guides.append(
+            {
+                "comment": f"Corte {i + 1} fim",
+                "duration": 0,
+                "pos": int(seg["end"] * FPS),
+                "type": 1,
+            }
+        )
+    return guides
 
 
 def _tc(seconds: float) -> str:
@@ -121,7 +146,7 @@ def _make_qtblend_filter(parent, filter_id, seg_start, seg_end, camera_segments,
 
 def _build_audio_playlist(playlist, segments, camera_segments, video_chain, closing_chain):
     """Build audio playlist mirroring video entries (same cuts as V1)."""
-    for seg in segments:
+    for seg_idx, seg in enumerate(segments):
         # Same camera segments as video
         seg_cameras = []
         for cs in camera_segments:
@@ -154,6 +179,12 @@ def _build_audio_playlist(playlist, segments, camera_segments, video_chain, clos
             **{"in": "00:00:00.000", "out": CLOSING_LENGTH_TC, "producer": closing_chain},
         )
         _prop(c_entry, "kdenlive:id", "5")
+
+        # Blank gap between consecutive clips
+        if seg_idx < len(segments) - 1:
+            next_seg = segments[seg_idx + 1]
+            if next_seg["start"] - seg["end"] < GAP_BLANK_SECONDS:
+                ET.SubElement(playlist, "blank", length=_tc(GAP_BLANK_SECONDS))
 
 
 def _build_video_playlist(
@@ -270,6 +301,12 @@ def _build_video_playlist(
         _prop(f, "mlt_service", "brightness")
         _prop(f, "kdenlive_id", "fade_to_black")
         _prop(f, "alpha", "0=1;-1=0")
+
+        # Blank gap between consecutive clips
+        if seg_idx < len(segments) - 1:
+            next_seg = segments[seg_idx + 1]
+            if next_seg["start"] - seg["end"] < GAP_BLANK_SECONDS:
+                ET.SubElement(playlist, "blank", length=_tc(GAP_BLANK_SECONDS))
 
 
 def generate_vertical_project(
@@ -582,6 +619,19 @@ def generate_vertical_project(
         _prop(tractor4, "kdenlive:sequenceproperties.subtitlesList", sub_list + "\n")
         _prop(tractor4, "kdenlive:sequenceproperties.hidesubtitle", "0")
         _prop(tractor4, "kdenlive:sequenceproperties.globalSubtitleStyles", "[]\n")
+
+    # Timeline guides (mark clip start/end)
+    guides = _build_guides(segments)
+    if guides:
+        categories = json.dumps(
+            [
+                {"color": "#27ae60", "comment": "Início corte", "index": 0},
+                {"color": "#e74c3c", "comment": "Fim corte", "index": 1},
+            ],
+            indent=4,
+        )
+        _prop(tractor4, "kdenlive:sequenceproperties.guides", json.dumps(guides, indent=4) + "\n")
+        _prop(tractor4, "kdenlive:docproperties.guidesCategories", categories + "\n")
 
     ET.SubElement(tractor4, "track", producer="producer0")
     ET.SubElement(tractor4, "track", producer="tractor0")
