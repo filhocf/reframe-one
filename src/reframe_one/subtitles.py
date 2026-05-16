@@ -142,6 +142,87 @@ def break_into_lines(words: list[dict], max_chars: int = 50) -> list[list[dict]]
     return lines
 
 
+# --- Timeline Remapping -----------------------------------------------
+
+
+def _remap_segments_to_timeline(
+    whisper_segments: list[dict],
+    clips: list[dict],
+    closing_duration: float,
+    gap_duration: float,
+    sync_offset_ms: int = 0,
+) -> list[dict]:
+    """Remap Whisper segments to timeline positions accounting for closings/gaps.
+
+    Each clip occupies a position in the timeline:
+      clip1 | closing | gap | clip2 | closing | gap | clip3 | closing
+
+    Whisper timestamps are relative to the source video. We need to:
+    1. Filter segments that fall within each clip's source time range
+    2. Remap their timestamps to the corresponding timeline position
+    """
+    sync_offset_s = sync_offset_ms / 1000.0
+    remapped = []
+    timeline_pos = 0.0
+
+    for clip_idx, clip in enumerate(clips):
+        clip_start = clip["start"]
+        clip_end = clip["end"]
+        clip_duration = clip_end - clip_start
+
+        # Find Whisper segments that overlap with this clip
+        for seg in whisper_segments:
+            seg_start = seg.get("start", 0)
+            seg_end = seg.get("end", 0)
+
+            # Skip segments outside this clip
+            if seg_end <= clip_start or seg_start >= clip_end:
+                continue
+
+            # Clamp to clip boundaries
+            clamped_start = max(seg_start, clip_start)
+            clamped_end = min(seg_end, clip_end)
+
+            # Calculate position in timeline
+            # offset within clip + timeline position of clip start
+            new_start = (clamped_start - clip_start) + timeline_pos - sync_offset_s
+            new_end = (clamped_end - clip_start) + timeline_pos - sync_offset_s
+
+            # Remap words too
+            new_words = []
+            for w in seg.get("words", []):
+                w_start = w.get("start", 0)
+                w_end = w.get("end", 0)
+                if w_end <= clip_start or w_start >= clip_end:
+                    continue
+                new_words.append(
+                    {
+                        **w,
+                        "start": (max(w_start, clip_start) - clip_start)
+                        + timeline_pos
+                        - sync_offset_s,
+                        "end": (min(w_end, clip_end) - clip_start) + timeline_pos - sync_offset_s,
+                    }
+                )
+
+            if new_words or not seg.get("words"):
+                remapped.append(
+                    {
+                        **seg,
+                        "start": new_start,
+                        "end": new_end,
+                        "words": new_words,
+                    }
+                )
+
+        # Advance timeline position past this clip + closing + gap
+        timeline_pos += clip_duration + closing_duration
+        if clip_idx < len(clips) - 1:
+            timeline_pos += gap_duration
+
+    return remapped
+
+
 # --- ASS Generation ---------------------------------------------------
 
 
@@ -217,6 +298,9 @@ def generate_ass(
     llm_config: LLMConfig | None = None,
     offset_s: float = 0.0,
     sync_offset_ms: int = 0,
+    clips: list[dict] | None = None,
+    closing_duration: float = 3.8,
+    gap_duration: float = 5.0,
 ):
     """Generate ASS file with configurable style and optional LLM cleanup.
 
@@ -228,9 +312,22 @@ def generate_ass(
         llm_config: LLM config for text cleanup (None = local-only cleanup).
         offset_s: Subtract this from all timestamps (align to timeline start).
         sync_offset_ms: Fine-tune sync in milliseconds (negative = show earlier).
+        clips: List of {start, end} dicts defining clip boundaries in source video.
+            When provided, timestamps are remapped to timeline positions accounting
+            for closings and gaps between clips.
+        closing_duration: Duration of closing between clips (seconds).
+        gap_duration: Duration of blank gap between clips (seconds).
     """
-    # Combine offsets
-    total_offset_s = offset_s - (sync_offset_ms / 1000.0)
+    # When clips are provided, remap segments to timeline positions
+    if clips:
+        segments = _remap_segments_to_timeline(
+            segments, clips, closing_duration, gap_duration, sync_offset_ms
+        )
+        # offset_s and sync_offset_ms already applied in remap
+        total_offset_s = 0.0
+    else:
+        # Legacy single-clip mode
+        total_offset_s = offset_s - (sync_offset_ms / 1000.0)
     if isinstance(style, str):
         style = STYLE_PRESETS.get(style, STYLE_PRESETS["karaoke"])
 

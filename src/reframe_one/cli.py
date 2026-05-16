@@ -5,7 +5,7 @@ import json
 import os
 import sys
 
-from .kdenlive_gen import generate_vertical_project
+from .kdenlive_gen import CLOSING_DURATION_S, GAP_BLANK_SECONDS, generate_vertical_project
 from .parse_kdenlive import parse_project
 from .scene_detect import classify_cameras, detect_scenes, save_scenes
 from .subtitles import generate_ass, load_whisper_json
@@ -229,6 +229,8 @@ def _cmd_generate(args):
         whisper_segs = load_whisper_json(args.transcript)
         base = os.path.splitext(input_path)[0]
         ass_output = base + "-cortes.ass"
+        # Pass clips for multi-clip timeline remapping
+        clips_for_subs = segments if len(segments) > 1 else None
         generate_ass(
             whisper_segs,
             ass_output,
@@ -236,6 +238,9 @@ def _cmd_generate(args):
             max_chars=ep_config.max_chars,
             offset_s=segments[0]["start"],
             sync_offset_ms=ep_config.sync_offset_ms,
+            clips=clips_for_subs,
+            closing_duration=CLOSING_DURATION_S,
+            gap_duration=GAP_BLANK_SECONDS,
         )
         print(f"  📝 {ass_output}")
         print(f"  ⏱️  {_time.time() - t5:.1f}s")
