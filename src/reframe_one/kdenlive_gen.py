@@ -213,13 +213,14 @@ def _build_video_playlist(
                 entry_start = max(cs["start"], seg["start"])
                 entry_end = min(cs_end, seg["end"])
                 if entry_end > entry_start + 0.1:  # skip tiny segments
-                    seg_cameras.append(
-                        {
-                            "start": entry_start,
-                            "end": entry_end,
-                            "camera": cs["camera"],
-                        }
-                    )
+                    entry = {
+                        "start": entry_start,
+                        "end": entry_end,
+                        "camera": cs["camera"],
+                    }
+                    if "pan_x" in cs:
+                        entry["pan_x"] = cs["pan_x"]
+                    seg_cameras.append(entry)
 
         # If no camera segments found, use entire segment with fallback
         if not seg_cameras:
