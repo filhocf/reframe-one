@@ -35,7 +35,7 @@ def _build_guides(segments: list[dict]) -> list[dict]:
                 "type": 0,
             }
         )
-        timeline_pos += clip_dur
+        timeline_pos += clip_dur + CLOSING_DURATION_S
         guides.append(
             {
                 "comment": f"Corte {i + 1} fim",
@@ -44,8 +44,7 @@ def _build_guides(segments: list[dict]) -> list[dict]:
                 "type": 1,
             }
         )
-        # Account for closing + possible gap
-        timeline_pos += CLOSING_DURATION_S
+        # Account for gap between clips
         if i < len(segments) - 1:
             next_seg = segments[i + 1]
             if next_seg["start"] - seg["end"] < GAP_BLANK_SECONDS:
