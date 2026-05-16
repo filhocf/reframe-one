@@ -21,26 +21,33 @@ FPS = 30  # matches MLT profile (30/1)
 
 
 def _build_guides(segments: list[dict]) -> list[dict]:
-    """Build timeline guides at clip boundaries, relative to generated timeline."""
+    """Build timeline guides at clip boundaries, relative to generated timeline.
+
+    Uses frame-based arithmetic to match Kdenlive's actual entry positions
+    (each entry is rounded to frame boundaries).
+    """
     guides = []
-    timeline_pos = 0.0
+    timeline_frame = 0
 
     for i, seg in enumerate(segments):
-        clip_dur = seg["end"] - seg["start"]
+        clip_frames = round((seg["end"] - seg["start"]) * FPS)
+        closing_frames = CLOSING_LENGTH_FRAMES
+        gap_frames = round(GAP_BLANK_SECONDS * FPS)
+
         guides.append(
             {
                 "comment": f"Corte {i + 1} início",
                 "duration": 0,
-                "pos": int(timeline_pos * FPS),
+                "pos": timeline_frame,
                 "type": 0,
             }
         )
-        timeline_pos += clip_dur + CLOSING_DURATION_S
+        timeline_frame += clip_frames + closing_frames
         guides.append(
             {
                 "comment": f"Corte {i + 1} fim",
                 "duration": 0,
-                "pos": int(timeline_pos * FPS),
+                "pos": timeline_frame,
                 "type": 1,
             }
         )
@@ -48,7 +55,7 @@ def _build_guides(segments: list[dict]) -> list[dict]:
         if i < len(segments) - 1:
             next_seg = segments[i + 1]
             if next_seg["start"] - seg["end"] < GAP_BLANK_SECONDS:
-                timeline_pos += GAP_BLANK_SECONDS
+                timeline_frame += gap_frames
 
     return guides
 
