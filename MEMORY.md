@@ -3,11 +3,32 @@
 ## Estado Atual
 
 - **Versão**: 0.2.0-dev (não publicado)
-- **Status**: pipeline funcional com 7 features novas, testado com ep 04
-- **Último teste**: ep 04 (Silvana e Melissa) — 128 segments, estilo papo-saude
-- **Commits**: 20 (main)
-- **Testes**: 34 passando
-- **Issues**: 15 (13 fechadas, 2 abertas)
+- **Status**: pipeline funcional, bug #22 corrigido, testado com ep 04
+- **Último commit**: 370c15b (fix: remap subtitle timestamps to timeline positions)
+- **Testes**: 43 passando
+- **Issues**: 14 fechadas, 1 aberta (#18 pan_x)
+
+## Sessão 16/mai/2026 (sirdata)
+
+### Feito
+- Bug #22 corrigido: legendas dessincronizadas a partir do clip 2
+  - Causa raiz: timestamps ASS relativos ao vídeo fonte, timeline tem closings+gaps
+  - Fix: `_remap_segments_to_timeline()` calcula offset acumulado por clip
+  - Commit 370c15b pushed to main
+- Levantamento completo do ecossistema Kdenlive scripting/plugins
+- Decisão arquitetural: chat QML integrado + reframe-one como pipeline externo
+- Documentação atualizada (ARCHITECTURE.md + MEMORY.md)
+
+### Decisões (consenso Kiro + Galdério)
+- **Chat QML**: widget dock lateral no Kdenlive → WebSocket → FastAPI → RPC 9876
+- **reframe-one**: pipeline externo (não plugin embutido). Kdenlive RPC só para edição fina.
+- **Fork próprio**: manter independente. Propor upstream só com caso de uso sólido.
+- Referência: D-Ogi/kdenlive (fork D-Bus + widget chat + mcp-kdenlive)
+
+### Próximo
+- Issue #18: aplicar pan_x do speaker detect nos entries do kdenlive_gen
+- Testar pipeline completo com ep 04 (17 cortes)
+- Renderizar cortes finais para publicação
 
 ## Sessão 10/mai/2026 (sirdata)
 
