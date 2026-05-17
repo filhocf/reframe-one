@@ -20,6 +20,62 @@ GAP_BLANK_SECONDS = 5.0  # blank gap between consecutive clips
 FPS = 30  # matches MLT profile (30/1)
 
 
+def _tc_to_frames(tc: str) -> int:
+    """Convert timecode string to frame count."""
+    parts = tc.split(":")
+    seconds = int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+    return round(seconds * FPS)
+
+
+def _entry_duration_frames(in_tc: str, out_tc: str) -> int:
+    """Compute entry duration in frames (inclusive, matches Kdenlive counting)."""
+    return _tc_to_frames(out_tc) - _tc_to_frames(in_tc) + 1
+
+
+def _compute_real_guide_positions(playlist_el: ET.Element) -> list[dict]:
+    """Compute guide positions by summing actual entry durations in the playlist."""
+    guides = []
+    timeline_frame = 0
+    seg_idx = 0
+    prev_was_blank = False
+
+    for el in playlist_el:
+        if el.tag == "entry":
+            in_tc = el.get("in", "00:00:00.000")
+            out_tc = el.get("out", "00:00:00.000")
+            dur_frames = _entry_duration_frames(in_tc, out_tc)
+            producer = el.get("producer")
+            is_closing = producer == "chain5"
+
+            if not is_closing and (seg_idx == 0 and timeline_frame == 0 or prev_was_blank):
+                guides.append({
+                    "comment": f"Corte {seg_idx + 1} início",
+                    "duration": 0,
+                    "pos": timeline_frame,
+                    "type": 0,
+                })
+
+            timeline_frame += dur_frames
+
+            if is_closing:
+                guides.append({
+                    "comment": f"Corte {seg_idx + 1} fim",
+                    "duration": 0,
+                    "pos": timeline_frame,
+                    "type": 1,
+                })
+                seg_idx += 1
+
+            prev_was_blank = False
+
+        elif el.tag == "blank":
+            length = el.get("length", "00:00:00.000")
+            timeline_frame += _tc_to_frames(length)
+            prev_was_blank = True
+
+    return guides
+
+
 def _build_guides(segments: list[dict]) -> list[dict]:
     """Build timeline guides at clip boundaries, relative to generated timeline.
 
@@ -233,13 +289,18 @@ def _build_video_playlist(
             seg_cameras = [{"start": seg["start"], "end": seg["end"], "camera": "unknown"}]
 
         # Generate one entry per camera segment (hard cut between positions)
+        last_x = None  # Track last known pan_x for fallback
         for i, cam_seg in enumerate(seg_cameras):
             in_tc = _tc(cam_seg["start"])
             out_tc = _tc(cam_seg["end"])
 
-            # Use speaker-detected X if available, otherwise fall back to camera position
+            # Use speaker-detected X if available, otherwise fall back to last known or camera position
             if "pan_x" in cam_seg:
                 x = cam_seg["pan_x"]
+                y, w, h = -2112, 3456, 6144
+                last_x = x
+            elif last_x is not None:
+                x = last_x
                 y, w, h = -2112, 3456, 6144
             else:
                 x, y, w, h = (cameras or CAMERA_POSITIONS).get(
@@ -652,8 +713,8 @@ def generate_vertical_project(
         _prop(tractor4, "kdenlive:sequenceproperties.hidesubtitle", "0")
         _prop(tractor4, "kdenlive:sequenceproperties.globalSubtitleStyles", "[]\n")
 
-    # Timeline guides (mark clip start/end)
-    guides = _build_guides(segments)
+    # Timeline guides (mark clip start/end) — computed from real playlist entries
+    guides = _compute_real_guide_positions(pl4)
     if guides:
         categories = json.dumps(
             [
